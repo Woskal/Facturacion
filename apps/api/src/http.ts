@@ -52,6 +52,11 @@ export const quantitySchema = z
   .regex(/^-?\d+$/, 'La cantidad debe ser un entero en milésimas.')
   .transform((value) => BigInt(value))
 
+/** El momento que declara una venta sincronizada no es aceptable. */
+export class SaleTimestampError extends Error {
+  override readonly name = 'SaleTimestampError'
+}
+
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Se espera una fecha YYYY-MM-DD.')
 
 /**
@@ -83,6 +88,10 @@ export function statusForError(error: unknown): { status: number; message: strin
     error instanceof UserAlreadyExistsError
   ) {
     return { status: 409, message: error.message }
+  }
+
+  if (error instanceof SaleTimestampError) {
+    return { status: 422, message: error.message }
   }
 
   if (error instanceof CoreError || error instanceof MoneyError) {

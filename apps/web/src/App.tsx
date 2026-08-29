@@ -3,6 +3,9 @@ import { formatRate, rate as makeRate, type Rate } from '@fve/money'
 
 import { ApiError, api, getToken, setToken, type LoginResponse, type Membership, type RateJson } from './api'
 import { Aviso, Boton } from './components/ui'
+import { BarraConexion, useConexion } from './components/Conexion'
+import { guardarTasa, leerTasa, limpiarNegocio } from './local'
+import { prepararParaOffline } from './sync'
 import { Caja } from './pages/Caja'
 import { Catalogo } from './pages/Catalogo'
 import { Clientes } from './pages/Clientes'
@@ -35,6 +38,8 @@ export function App() {
   const [rate, setRate] = useState<Rate | null>(null)
   const [stationId, setStationId] = useState<string | null>(null)
   const [avisoTasa, setAvisoTasa] = useState<string | null>(null)
+  const [refrescoCola, setRefrescoCola] = useState(0)
+  const { enLinea } = useConexion()
 
   /** Recupera la sesión guardada al abrir. */
   useEffect(() => {
@@ -68,16 +73,37 @@ export function App() {
       })
   }, [])
 
-  const cargarTasa = useCallback(async () => {
-    try {
-      const data = await api.get<{ rate: RateJson }>('/rates/current')
-      setRate(makeRate(BigInt(data.rate.bsPerUsd), data.rate.date, data.rate.source as 'BCV'))
-      setAvisoTasa(null)
-    } catch (fallo) {
-      setRate(null)
-      setAvisoTasa(fallo instanceof ApiError ? fallo.message : 'No se pudo obtener la tasa del día.')
-    }
-  }, [])
+  /**
+   * Resuelve la tasa del día.
+   *
+   * Sin internet se usa la última guardada. Una tasa de ayer es imprecisa; no
+   * poder vender es peor, y el documento guarda cuál se usó, así que el
+   * histórico no miente.
+   */
+  const cargarTasa = useCallback(
+    async (tenantId: string) => {
+      try {
+        const data = await api.get<{ rate: RateJson }>('/rates/current')
+        setRate(makeRate(BigInt(data.rate.bsPerUsd), data.rate.date, data.rate.source as 'BCV'))
+        await guardarTasa(tenantId, {
+          bsPerUsd: data.rate.bsPerUsd,
+          date: data.rate.date,
+          source: data.rate.source,
+        })
+        setAvisoTasa(null)
+      } catch (fallo) {
+        const guardada = await leerTasa(tenantId)
+        if (guardada) {
+          setRate(makeRate(BigInt(guardada.bsPerUsd), guardada.date, guardada.source as 'BCV'))
+          setAvisoTasa(null)
+          return
+        }
+        setRate(null)
+        setAvisoTasa(fallo instanceof ApiError ? fallo.message : 'No se pudo obtener la tasa del día.')
+      }
+    },
+    [],
+  )
 
   /**
    * Al entrar a un negocio se resuelven las dos cosas sin las que no se puede
@@ -85,13 +111,28 @@ export function App() {
    */
   useEffect(() => {
     if (estado.fase !== 'dentro') return
+    const tenantId = estado.tenantId
 
-    void cargarTasa()
+    void cargarTasa(tenantId)
     void api
       .get<{ stations: { stationId: string; name: string }[] }>('/stations')
       .then((data) => setStationId(data.stations[0]?.stationId ?? null))
       .catch(() => setStationId(null))
   }, [estado.fase, estado.fase === 'dentro' ? estado.tenantId : null, cargarTasa])
+
+  /**
+   * Prepara la caja para quedarse sin internet.
+   *
+   * Guarda catálogo, tasa y un bloque de números APARTADOS, y lo hace cada vez
+   * que vuelve la conexión. Un bloque no se puede pedir sin red, que es justo
+   * cuando hace falta: por eso se pide antes, no cuando ya no queda.
+   */
+  useEffect(() => {
+    if (estado.fase !== 'dentro' || !stationId || !enLinea) return
+    void prepararParaOffline(estado.tenantId, stationId)
+      .then(() => setRefrescoCola((n) => n + 1))
+      .catch(() => undefined)
+  }, [estado.fase, estado.fase === 'dentro' ? estado.tenantId : null, stationId, enLinea])
 
   /**
    * La tasa se refresca sola cada cinco minutos.
@@ -101,9 +142,10 @@ export function App() {
    */
   useEffect(() => {
     if (estado.fase !== 'dentro') return
-    const temporizador = setInterval(() => void cargarTasa(), 5 * 60 * 1000)
+    const tenantId = estado.tenantId
+    const temporizador = setInterval(() => void cargarTasa(tenantId), 5 * 60 * 1000)
     return () => clearInterval(temporizador)
-  }, [estado.fase, cargarTasa])
+  }, [estado.fase, estado.fase === 'dentro' ? estado.tenantId : null, cargarTasa])
 
   function entrar(sesion: LoginResponse) {
     setEsOperador(sesion.user.isPlatformAdmin)
@@ -126,6 +168,11 @@ export function App() {
   }
 
   async function salir() {
+    if (estado.fase === 'dentro') {
+      // La cola de ventas sin subir NO se borra: es dinero que todavía no llegó
+      // al servidor.
+      await limpiarNegocio(estado.tenantId).catch(() => undefined)
+    }
     await api.post('/auth/logout').catch(() => undefined)
     setToken(null)
     setRate(null)
@@ -180,6 +227,10 @@ export function App() {
       onSeccion={setSeccion}
       onSalir={() => void salir()}
     >
+      {estado.fase === 'dentro' ? (
+        <BarraConexion tenantId={estado.tenantId} enLinea={enLinea} refresco={refrescoCola} />
+      ) : null}
+
       {avisoTasa ? (
         <Aviso tipo="alerta">
           {avisoTasa} Cargue la tasa del día antes de vender: sin ella no se puede emitir nada.
@@ -193,7 +244,13 @@ export function App() {
       {seccion === 'reportes' ? <Reportes /> : null}
 
       {rate && stationId && seccion === 'venta' ? (
-        <Venta rate={rate} stationId={stationId} onVendido={() => void cargarTasa()} />
+        <Venta
+          rate={rate}
+          stationId={stationId}
+          tenantId={estado.tenantId}
+          enLinea={enLinea}
+          onVendido={() => setRefrescoCola((n) => n + 1)}
+        />
       ) : null}
 
       {rate && stationId && seccion === 'caja' ? <Caja stationId={stationId} rate={rate} /> : null}

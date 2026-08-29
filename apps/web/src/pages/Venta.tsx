@@ -18,6 +18,7 @@ import {
 } from '@fve/money'
 
 import { ApiError, api, fromMoney, toMoney, type ProductJson, type SaleResponse } from '../api'
+import { buscarLocal, encolarVenta, tomarNumero } from '../local'
 import { aMilesimas, aMonto, cantidad } from '../formato'
 import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
 
@@ -52,7 +53,19 @@ const MEDIOS: { method: PaymentMethod; nombre: string; moneda: Currency; referen
  * pueden discrepar. El servidor vuelve a calcularlo igual y es quien manda: esto
  * es para que el cajero vea el número al instante, no para reemplazarlo.
  */
-export function Venta({ rate, stationId, onVendido }: { rate: Rate; stationId: string; onVendido: () => void }) {
+export function Venta({
+  rate,
+  stationId,
+  tenantId,
+  enLinea,
+  onVendido,
+}: {
+  rate: Rate
+  stationId: string
+  tenantId: string
+  enLinea: boolean
+  onVendido: () => void
+}) {
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState<ProductJson[]>([])
   const [resaltado, setResaltado] = useState(0)
@@ -73,17 +86,25 @@ export function Venta({ rate, stationId, onVendido }: { rate: Rate; stationId: s
     }
 
     const temporizador = setTimeout(() => {
-      void api
-        .get<{ products: ProductJson[] }>(`/products?q=${encodeURIComponent(termino)}&limit=8`)
-        .then((data) => {
-          setResultados(data.products)
+      const buscar = enLinea
+        ? api
+            .get<{ products: ProductJson[] }>(`/products?q=${encodeURIComponent(termino)}&limit=8`)
+            .then((data) => data.products)
+            // Si la red falla en mitad de la búsqueda, se cae al catálogo
+            // guardado en vez de dejar al cajero sin resultados.
+            .catch(() => buscarLocal(tenantId, termino))
+        : buscarLocal(tenantId, termino)
+
+      void buscar
+        .then((productos) => {
+          setResultados(productos)
           setResaltado(0)
         })
         .catch(() => setResultados([]))
     }, 120)
 
     return () => clearTimeout(temporizador)
-  }, [busqueda])
+  }, [busqueda, enLinea, tenantId])
 
   function agregar(producto: ProductJson) {
     setEmitida(null)
@@ -166,26 +187,75 @@ export function Venta({ rate, stationId, onVendido }: { rate: Rate; stationId: s
   const totalBs = convert(totales.total, 'VES', rate)
   const restante = liquidacion ? liquidacion.balance : totales.total
 
+  /**
+   * Cobra la venta.
+   *
+   * Con internet va directo al servidor. Sin internet toma un número del bloque
+   * apartado, deja la venta en la cola y sigue: la caja no se detiene porque se
+   * haya caído la red, que es todo el punto.
+   */
   async function cobrar() {
     setError(null)
     setCobrando(true)
 
-    try {
-      const venta = await api.post<SaleResponse>('/sales', {
-        stationId,
-        currency: 'USD',
-        lines: carrito.map((linea) => ({
-          productId: linea.producto.productId,
-          quantity: linea.cantidad.toString(),
-        })),
-        payments: pagos.map((pago) => ({
-          method: pago.method,
-          amount: fromMoney(pago.monto),
-          ...(pago.referencia ? { reference: pago.referencia } : {}),
-        })),
-      })
+    const lineas = carrito.map((linea) => ({
+      productId: linea.producto.productId,
+      quantity: linea.cantidad.toString(),
+    }))
+    const pagosCuerpo = pagos.map((pago) => ({
+      method: pago.method,
+      amount: fromMoney(pago.monto),
+      ...(pago.referencia ? { reference: pago.referencia } : {}),
+    }))
 
-      setEmitida(venta)
+    try {
+      if (enLinea) {
+        const venta = await api.post<SaleResponse>('/sales', {
+          stationId,
+          currency: 'USD',
+          lines: lineas,
+          payments: pagosCuerpo,
+        })
+        setEmitida(venta)
+      } else {
+        const asignado = await tomarNumero(tenantId)
+        if (!asignado) {
+          setError(
+            'Se acabaron los números apartados para esta caja. Conéctese para pedir más antes de seguir vendiendo.',
+          )
+          return
+        }
+
+        const occurredAt = new Date().toISOString()
+        const clientRef = `${stationId}:${asignado.numero}`
+
+        await encolarVenta({
+          tenantId,
+          stationId,
+          clientRef,
+          reservedNumber: asignado.numero,
+          fullNumber: asignado.fullNumber,
+          occurredAt,
+          totalVes: fromMoney(convert(liquidacion?.totalDue ?? totales.total, 'VES', rate)),
+          cuerpo: {
+            stationId,
+            currency: 'USD',
+            lines: lineas,
+            payments: pagosCuerpo,
+            reservedNumber: asignado.numero,
+            clientRef,
+            occurredAt,
+          },
+        })
+
+        setEmitida({
+          fullNumber: asignado.fullNumber,
+          settlement: {
+            change: fromMoney(liquidacion?.change ?? zero('USD')),
+          },
+        } as SaleResponse)
+      }
+
       setCarrito([])
       setPagos([])
       onVendido()
@@ -365,7 +435,7 @@ export function Venta({ rate, stationId, onVendido }: { rate: Rate; stationId: s
 
         {emitida ? (
           <Aviso tipo="exito">
-            Emitida {emitida.fullNumber}
+            {enLinea ? 'Emitida' : 'Guardada para subir'} {emitida.fullNumber}
             {BigInt(emitida.settlement.change.amount) > 0n
               ? ` · vuelto ${formatMoney(toMoney(emitida.settlement.change))}`
               : ''}
@@ -379,7 +449,9 @@ export function Venta({ rate, stationId, onVendido }: { rate: Rate; stationId: s
           onClick={() => void cobrar()}
         >
           {cobrando
-            ? 'Emitiendo…'
+            ? enLinea
+              ? 'Emitiendo…'
+              : 'Guardando…'
             : carrito.length === 0
               ? 'Sin productos'
               : restante.amount !== 0n

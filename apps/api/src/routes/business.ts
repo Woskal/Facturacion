@@ -39,7 +39,14 @@ import {
   voidSale,
 } from '@fve/core'
 
-import { currencySchema, isoDateSchema, moneySchema, quantitySchema, requireTenant } from '../http'
+import {
+  SaleTimestampError,
+  currencySchema,
+  isoDateSchema,
+  moneySchema,
+  quantitySchema,
+  requireTenant,
+} from '../http'
 
 const paymentMethodSchema = z.enum([
   'EFECTIVO_BS',
@@ -53,6 +60,37 @@ const paymentMethodSchema = z.enum([
 ])
 
 const idKindSchema = z.enum(['V', 'E', 'J', 'G', 'P'])
+
+/** Cuánto hacia atrás se admite fechar una venta sincronizada. */
+const MAX_ATRASO_DIAS = 30
+
+/**
+ * Valida el momento que declara una venta hecha sin conexión.
+ *
+ * Dejar que el cliente fije la fecha de un documento fiscal es delicado: sirve
+ * para antedatar ventas. Por eso solo se acepta junto a un número reservado
+ * —prueba de que la caja estuvo realmente desconectada— y dentro de una ventana
+ * razonable. Nunca hacia el futuro.
+ */
+function fechaDeVenta(occurredAt: string, reservedNumber: number | undefined): Date {
+  if (reservedNumber === undefined) {
+    throw new SaleTimestampError('Solo una venta con número reservado puede declarar su propio momento.')
+  }
+
+  const momento = new Date(occurredAt)
+  const ahora = Date.now()
+
+  if (momento.getTime() > ahora + 5 * 60 * 1000) {
+    throw new SaleTimestampError('Una venta no puede estar fechada en el futuro.')
+  }
+  if (momento.getTime() < ahora - MAX_ATRASO_DIAS * 24 * 60 * 60 * 1000) {
+    throw new SaleTimestampError(
+      `Una venta no puede sincronizarse con más de ${MAX_ATRASO_DIAS} días de atraso. Regístrela a mano.`,
+    )
+  }
+
+  return momento
+}
 const productParams = z.object({ productId: z.string().uuid() })
 
 export function registerBusinessRoutes(app: FastifyInstance, db: Database): void {
@@ -429,6 +467,14 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         changeCurrency: currencySchema.optional(),
         clientRef: z.string().min(1).max(120).optional(),
         reservedNumber: z.number().int().min(1).optional(),
+        /**
+         * Momento real de la venta, para lo que se emitió sin conexión.
+         *
+         * Sin esto, una venta de ayer sincronizada hoy quedaría fechada hoy y
+         * calculada con la tasa de hoy: el libro de ventas diría algo que no
+         * pasó.
+         */
+        occurredAt: z.string().datetime().optional(),
         notes: z.string().optional(),
         lines: z
           .array(
@@ -456,6 +502,7 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
       tenantId: ctx.activeTenantId,
       userId: ctx.userId,
       ...body,
+      ...(body.occurredAt !== undefined ? { now: fechaDeVenta(body.occurredAt, body.reservedNumber) } : {}),
     })
 
     return reply.status(sale.deduplicated ? 200 : 201).send({

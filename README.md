@@ -12,11 +12,22 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Esquema de base de datos y aislamiento multi-tenant
 - [x] Autenticación y sesiones revocables
 
-**Fase 2 — Sin conexión.** En curso.
+**Fase 2 — Sin conexión.** Completa.
 
 - [x] Reserva de bloques de numeración por caja
-- [ ] Caché y cola local en el navegador
-- [ ] Sincronización y aplicación instalable
+- [x] Catálogo, tasa y cola de ventas guardados en el navegador
+- [x] Sincronización automática al volver la conexión
+- [x] Aplicación instalable
+
+La caja guarda catálogo, tasa y un bloque de números apartados mientras hay
+internet. Al cortarse, sigue vendiendo con esos números y deja las ventas en
+cola; al volver la conexión suben solas, con el momento real de cada una y no
+el de la sincronización.
+
+Una venta sincronizada solo puede declarar su propia fecha si trae número
+reservado —prueba de que la caja estuvo desconectada— y dentro de treinta días
+hacia atrás, nunca hacia el futuro. Sin ese límite, la fecha de un documento
+fiscal quedaría a discreción del cliente.
 
 **Fase 1 — Núcleo transaccional.** Completa.
 
