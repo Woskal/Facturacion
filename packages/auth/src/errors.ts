@@ -40,11 +40,3 @@ export class MembershipRequiredError extends AuthError {
     super('No tiene acceso a este negocio.')
   }
 }
-
-/** El rol del usuario no alcanza para la acción pedida. */
-export class ForbiddenError extends AuthError {
-  override readonly name = 'ForbiddenError'
-  constructor(readonly permission: string) {
-    super(`Su rol no permite esta acción (${permission}).`)
-  }
-}

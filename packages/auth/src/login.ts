@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { schema, withUser, type Database } from '@fve/db'
 
-import type { MemberRole } from './access'
+import type { MemberRole } from './roles'
 import {
   AccountLockedError,
   InvalidCredentialsError,

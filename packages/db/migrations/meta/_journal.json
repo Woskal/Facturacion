@@ -36,6 +36,13 @@
       "when": 1787980482511,
       "tag": "0004_membership_self_read",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787981074866,
+      "tag": "0005_single_role",
+      "breakpoints": true
     }
   ]
 }

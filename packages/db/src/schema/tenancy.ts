@@ -68,7 +68,7 @@ export const memberships = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    role: memberRole('role').notNull().default('CASHIER'),
+    role: memberRole('role').notNull().default('OWNER'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),

@@ -42,12 +42,8 @@ export async function createTenant(db: Database, suffix: string): Promise<string
   return tenant.id
 }
 
-export async function addMembership(
-  db: Database,
-  tenantId: string,
-  userId: string,
-  role: 'OWNER' | 'ADMIN' | 'CASHIER' | 'VIEWER' = 'OWNER',
-): Promise<void> {
+export async function addMembership(db: Database, tenantId: string, userId: string): Promise<void> {
+  const role = 'OWNER' as const
   await withTenant(db, tenantId, async (tx) => {
     await tx.insert(schema.memberships).values({ tenantId, userId, role })
   })

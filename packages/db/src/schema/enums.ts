@@ -15,7 +15,19 @@ export const rateSource = pgEnum('rate_source', ['BCV', 'MANUAL', 'PARALELO'])
 /** Letra del documento de identidad o RIF: V-, E-, J-, G-, P-. */
 export const idKind = pgEnum('id_kind', ['V', 'E', 'J', 'G', 'P'])
 
-export const memberRole = pgEnum('member_role', ['OWNER', 'ADMIN', 'CASHIER', 'VIEWER'])
+/**
+ * Rol dentro de un negocio.
+ *
+ * Un solo valor a propósito: el producto apunta a negocios pequeños donde una
+ * persona hace todo. Una matriz de permisos con roles que nadie usa es
+ * maquinaria muerta que igual hay que mantener y probar.
+ *
+ * La columna se conserva —en vez de eliminarse— porque es la costura por donde
+ * entrarán más roles el día que haya varios usuarios por negocio. Agregar
+ * valores a un enum de Postgres es barato; volver a introducir la columna
+ * después, no.
+ */
+export const memberRole = pgEnum('member_role', ['OWNER'])
 
 /** Si el precio de catálogo trae el IVA adentro o se agrega al facturar. */
 export const priceMode = pgEnum('price_mode', ['IVA_INCLUIDO', 'IVA_EXCLUIDO'])

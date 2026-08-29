@@ -10,13 +10,23 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Monorepo y configuración de TypeScript
 - [x] `@fve/money` — núcleo monetario con su suite de tests
 - [x] Esquema de base de datos y aislamiento multi-tenant
-- [x] Autenticación, sesiones y permisos por rol
+- [x] Autenticación y sesiones revocables
 
 Siguiente: **Fase 1 — Núcleo transaccional.** Tasa del día, catálogo, clientes,
 punto de venta y cierre de caja.
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
+
+## Alcance de usuarios
+
+Un usuario administrador por negocio, que puede hacer de todo dentro del suyo.
+No hay roles ni matriz de permisos: con un solo rol, cualquier comprobación
+devolvería siempre lo mismo. Lo que separa a un usuario de otro no es su rol
+sino su negocio, y de eso se encarga la seguridad por fila de Postgres.
+
+La tabla `memberships` y la columna `role` se conservan como la costura por
+donde entrarán más usuarios y más roles cuando haga falta.
 
 ## Alcance fiscal
 
@@ -42,7 +52,7 @@ docs/
 packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios
-  auth/                  Autenticación, sesiones opacas y permisos por rol
+  auth/                  Autenticación y sesiones opacas revocables
 ```
 
 ## Entorno de desarrollo

@@ -5,15 +5,11 @@ import { schema, withTenant, type Database } from '@fve/db'
 import {
   AccountLockedError,
   DEFAULT_SESSION_TTL_MS,
-  ForbiddenError,
   InvalidCredentialsError,
   InvalidSessionError,
   MAX_FAILED_ATTEMPTS,
   MembershipRequiredError,
-  ROLE_PERMISSIONS,
   authenticate,
-  authorize,
-  can,
   changePassword,
   generateToken,
   hashPassword,
@@ -197,12 +193,12 @@ describe('sesiones', () => {
   })
 
   it('rechaza una sesión revocada de inmediato', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const { token, sessionId } = await issueSession(db, { userId })
 
     await expect(verifySession(db, token)).resolves.toBeTruthy()
     await revokeSession(db, sessionId)
-    // Sin esperar a que expire: se despide al cajero y pierde el acceso ya.
+    // Sin esperar a que expire: se cierra la sesión y el acceso se corta ya.
     await expect(verifySession(db, token)).rejects.toThrow(InvalidSessionError)
   })
 
@@ -226,7 +222,7 @@ describe('selección de negocio', () => {
   it('abre el negocio del que se es miembro', async () => {
     const userId = await createUser(db, 'duenio@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'OWNER')
+    await addMembership(db, tenantId, userId)
 
     const { session } = await authenticate(db, { email: 'duenio@ejemplo.ve', password: CLAVE })
     const selected = await selectTenant(db, session.sessionId, tenantId)
@@ -240,7 +236,7 @@ describe('selección de negocio', () => {
     const userId = await createUser(db, 'ajeno@ejemplo.ve')
     const propio = await createTenant(db, '1')
     const ajeno = await createTenant(db, '2')
-    await addMembership(db, propio, userId, 'OWNER')
+    await addMembership(db, propio, userId)
 
     const { session } = await authenticate(db, { email: 'ajeno@ejemplo.ve', password: CLAVE })
 
@@ -253,7 +249,7 @@ describe('selección de negocio', () => {
   it('la sesión nace sin negocio activo aunque solo haya uno', async () => {
     const userId = await createUser(db, 'duenio@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'OWNER')
+    await addMembership(db, tenantId, userId)
 
     const { session, memberships } = await authenticate(db, { email: 'duenio@ejemplo.ve', password: CLAVE })
     expect(memberships).toHaveLength(1)
@@ -264,14 +260,14 @@ describe('selección de negocio', () => {
     const userId = await createUser(db, 'contador@ejemplo.ve')
     const uno = await createTenant(db, '1')
     const dos = await createTenant(db, '2')
-    await addMembership(db, uno, userId, 'ADMIN')
-    await addMembership(db, dos, userId, 'VIEWER')
+    await addMembership(db, uno, userId)
+    await addMembership(db, dos, userId)
 
     const { session, memberships } = await authenticate(db, { email: 'contador@ejemplo.ve', password: CLAVE })
     expect(memberships).toHaveLength(2)
 
-    expect((await selectTenant(db, session.sessionId, uno)).role).toBe('ADMIN')
-    expect((await selectTenant(db, session.sessionId, dos)).role).toBe('VIEWER')
+    expect((await selectTenant(db, session.sessionId, uno)).tenantId).toBe(uno)
+    expect((await selectTenant(db, session.sessionId, dos)).tenantId).toBe(dos)
   })
 
   it('listMemberships solo devuelve las del usuario pedido, pese a ser SECURITY DEFINER', async () => {
@@ -315,12 +311,12 @@ describe('revocación en cascada', () => {
     ).rejects.toThrow(InvalidCredentialsError)
   })
 
-  it('retirar a alguien de un negocio cierra sus sesiones en ese negocio', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+  it('retirar el acceso a un negocio cierra las sesiones que lo tenían activo', async () => {
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
 
-    const { session } = await authenticate(db, { email: 'cajero@ejemplo.ve', password: CLAVE })
+    const { session } = await authenticate(db, { email: 'duenio2@ejemplo.ve', password: CLAVE })
     await selectTenant(db, session.sessionId, tenantId)
 
     await withTenant(db, tenantId, (tx) =>
@@ -333,41 +329,11 @@ describe('revocación en cascada', () => {
   })
 })
 
-describe('permisos por rol', () => {
-  it('el dueño puede todo', () => {
-    expect(can('OWNER', 'settings:manage')).toBe(true)
-    expect(can('OWNER', 'sale:void')).toBe(true)
-  })
-
-  it('el cajero no puede anular ventas: es el fraude clásico del mostrador', () => {
-    expect(can('CASHIER', 'sale:create')).toBe(true)
-    expect(can('CASHIER', 'sale:void')).toBe(false)
-    expect(() => authorize('CASHIER', 'sale:void')).toThrow(ForbiddenError)
-  })
-
-  it('el cajero no ve reportes ni toca el catálogo', () => {
-    expect(can('CASHIER', 'report:view')).toBe(false)
-    expect(can('CASHIER', 'product:manage')).toBe(false)
-    expect(can('CASHIER', 'rate:manage')).toBe(false)
-  })
-
-  it('el administrador puede todo salvo la configuración del negocio', () => {
-    expect(can('ADMIN', 'sale:void')).toBe(true)
-    expect(can('ADMIN', 'team:manage')).toBe(true)
-    expect(can('ADMIN', 'settings:manage')).toBe(false)
-  })
-
-  it('el observador solo mira', () => {
-    expect(ROLE_PERMISSIONS.VIEWER).toEqual(['report:view'])
-    expect(can('VIEWER', 'sale:create')).toBe(false)
-  })
-})
-
 describe('PIN de estación para operar sin conexión', () => {
   it('acepta el PIN correcto y rechaza el errado', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
     const stationId = await createStation(db, tenantId)
 
     await setStationPin(db, { tenantId, userId, stationId, pin: '4821' })
@@ -377,9 +343,9 @@ describe('PIN de estación para operar sin conexión', () => {
   })
 
   it('guarda el PIN con argon2, nunca en claro', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
     const stationId = await createStation(db, tenantId)
     await setStationPin(db, { tenantId, userId, stationId, pin: '4821' })
 
@@ -389,9 +355,9 @@ describe('PIN de estación para operar sin conexión', () => {
   })
 
   it('rechaza PIN demasiado cortos', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
     const stationId = await createStation(db, tenantId)
 
     await expect(setStationPin(db, { tenantId, userId, stationId, pin: '12' })).rejects.toThrow(
@@ -400,9 +366,9 @@ describe('PIN de estación para operar sin conexión', () => {
   })
 
   it('revocado deja de servir', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
     const stationId = await createStation(db, tenantId)
     await setStationPin(db, { tenantId, userId, stationId, pin: '4821' })
 
@@ -411,9 +377,9 @@ describe('PIN de estación para operar sin conexión', () => {
   })
 
   it('reasignar el PIN reactiva la credencial revocada', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const tenantId = await createTenant(db, '1')
-    await addMembership(db, tenantId, userId, 'CASHIER')
+    await addMembership(db, tenantId, userId)
     const stationId = await createStation(db, tenantId)
 
     await setStationPin(db, { tenantId, userId, stationId, pin: '4821' })
@@ -425,10 +391,10 @@ describe('PIN de estación para operar sin conexión', () => {
   })
 
   it('el PIN de una caja no sirve en la caja de otro negocio', async () => {
-    const userId = await createUser(db, 'cajero@ejemplo.ve')
+    const userId = await createUser(db, 'duenio2@ejemplo.ve')
     const propio = await createTenant(db, '1')
     const ajeno = await createTenant(db, '2')
-    await addMembership(db, propio, userId, 'CASHIER')
+    await addMembership(db, propio, userId)
     const stationPropia = await createStation(db, propio)
     const stationAjena = await createStation(db, ajeno)
 
