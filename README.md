@@ -12,6 +12,12 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Esquema de base de datos y aislamiento multi-tenant
 - [x] Autenticación y sesiones revocables
 
+**Fase 2 — Sin conexión.** En curso.
+
+- [x] Reserva de bloques de numeración por caja
+- [ ] Caché y cola local en el navegador
+- [ ] Sincronización y aplicación instalable
+
 **Fase 1 — Núcleo transaccional.** Completa.
 
 - [x] Tasa del día con histórico y sincronización automática del BCV

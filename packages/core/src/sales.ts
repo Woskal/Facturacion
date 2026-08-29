@@ -30,6 +30,7 @@ import {
   ProductUnavailableError,
   UnsettledSaleError,
 } from './errors'
+import { consumeReservedNumber } from './numbering'
 import { getRateFor, toIsoDate, type StoredRate } from './rates'
 
 export type DocumentKind = 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CREDITO'
@@ -69,6 +70,14 @@ export interface CreateSaleInput {
    * emitir uno nuevo.
    */
   readonly clientRef?: string | undefined
+  /**
+   * Número tomado de un bloque reservado, para ventas hechas sin conexión.
+   *
+   * Si va, se usa ese consecutivo en vez de pedir uno nuevo a la serie. Se
+   * valida que pertenezca a un bloque vigente de ESTA caja: un número inventado
+   * no se emite, porque descuadraría la serie sin remedio.
+   */
+  readonly reservedNumber?: number | undefined
   readonly notes?: string | undefined
   readonly now?: Date | undefined
 }
@@ -156,31 +165,51 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
     }
 
     // --- Numeración ---------------------------------------------------------
-    const seriesRows = await tx
-      .select()
-      .from(schema.documentSeries)
-      .where(
-        and(
-          eq(schema.documentSeries.tenantId, input.tenantId),
-          eq(schema.documentSeries.kind, kind),
-          eq(schema.documentSeries.isActive, true),
-        ),
-      )
-      .limit(1)
+    let seriesId: string
+    let prefix: string
+    let assigned: number
 
-    const series = seriesRows[0]
-    if (!series) throw new MissingSeriesError(kind)
+    if (input.reservedNumber !== undefined) {
+      // Venta hecha sin conexión: el número ya venía apartado para esta caja.
+      const bloque = await consumeReservedNumber(tx, {
+        tenantId: input.tenantId,
+        stationId: input.stationId,
+        kind,
+        number: input.reservedNumber,
+      })
+      seriesId = bloque.seriesId
+      prefix = bloque.prefix
+      assigned = input.reservedNumber
+    } else {
+      const seriesRows = await tx
+        .select()
+        .from(schema.documentSeries)
+        .where(
+          and(
+            eq(schema.documentSeries.tenantId, input.tenantId),
+            eq(schema.documentSeries.kind, kind),
+            eq(schema.documentSeries.isActive, true),
+          ),
+        )
+        .limit(1)
 
-    // El UPDATE toma un candado sobre la fila de la serie, así que dos ventas
-    // simultáneas se serializan aquí y no pueden recibir el mismo número.
-    const assignedRows = await tx.execute<{ assigned: number }>(sql`
-      UPDATE document_series
-      SET next_number = next_number + 1, updated_at = now()
-      WHERE id = ${series.id}
-      RETURNING next_number - 1 AS assigned
-    `)
-    const assigned = Number([...assignedRows][0]?.assigned)
-    const fullNumber = `${series.prefix}-${String(assigned).padStart(6, '0')}`
+      const series = seriesRows[0]
+      if (!series) throw new MissingSeriesError(kind)
+
+      // El UPDATE toma un candado sobre la fila de la serie, así que dos ventas
+      // simultáneas se serializan aquí y no pueden recibir el mismo número.
+      const assignedRows = await tx.execute<{ assigned: number }>(sql`
+        UPDATE document_series
+        SET next_number = next_number + 1, updated_at = now()
+        WHERE id = ${series.id}
+        RETURNING next_number - 1 AS assigned
+      `)
+      seriesId = series.id
+      prefix = series.prefix
+      assigned = Number([...assignedRows][0]?.assigned)
+    }
+
+    const fullNumber = `${prefix}-${String(assigned).padStart(6, '0')}`
 
     // --- Persistencia -------------------------------------------------------
     const amounts = dualizeTotals(totals, settlement, rate, input.currency)
@@ -190,7 +219,7 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
       .values({
         tenantId: input.tenantId,
         kind,
-        seriesId: series.id,
+        seriesId,
         number: assigned,
         fullNumber,
         stationId: input.stationId,

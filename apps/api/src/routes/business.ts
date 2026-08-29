@@ -18,10 +18,13 @@ import {
   getRateFor,
   listRates,
   listReceivables,
+  listNumberBlocks,
   listStations,
   listTaxRates,
   lowStockProducts,
   openCashSession,
+  releaseNumberBlock,
+  reserveNumberBlock,
   searchCustomers,
   salesBook,
   salesBookToCsv,
@@ -168,6 +171,53 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
   app.get('/stations', async (request, reply) => {
     const ctx = requireTenant(request)
     return reply.send({ stations: await listStations(db, ctx.activeTenantId) })
+  })
+
+  // --- Bloques de numeración para operar sin conexión -----------------------
+
+  const stationParams = z.object({ stationId: z.string().uuid() })
+
+  /**
+   * Aparta un bloque de consecutivos para una caja.
+   *
+   * La caja lo pide estando en línea y lo gasta sin internet. Los números salen
+   * de la misma serie que usa la venta normal, así que una caja en línea y otra
+   * sin conexión no pueden coincidir jamás.
+   */
+  app.post('/stations/:stationId/number-blocks', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = stationParams.parse(request.params)
+    const body = z
+      .object({
+        kind: z.enum(['PRESUPUESTO', 'NOTA_ENTREGA', 'RECIBO', 'NOTA_CREDITO']).default('NOTA_ENTREGA'),
+        count: z.number().int().min(1).max(1000),
+      })
+      .parse(request.body)
+
+    const block = await reserveNumberBlock(db, {
+      tenantId: ctx.activeTenantId,
+      stationId: params.stationId,
+      userId: ctx.userId,
+      ...body,
+    })
+
+    return reply.status(201).send({ block })
+  })
+
+  app.get('/stations/:stationId/number-blocks', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = stationParams.parse(request.params)
+    return reply.send({
+      blocks: await listNumberBlocks(db, { tenantId: ctx.activeTenantId, stationId: params.stationId }),
+    })
+  })
+
+  /** Libera lo que quede. Los números sin usar son un hueco, no vuelven a la serie. */
+  app.delete('/number-blocks/:reservationId', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ reservationId: z.string().uuid() }).parse(request.params)
+    await releaseNumberBlock(db, { tenantId: ctx.activeTenantId, reservationId: params.reservationId })
+    return reply.status(204).send()
   })
 
   app.get('/tax-rates', async (request, reply) => {
@@ -378,6 +428,7 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         kind: z.enum(['PRESUPUESTO', 'NOTA_ENTREGA', 'RECIBO', 'NOTA_CREDITO']).optional(),
         changeCurrency: currencySchema.optional(),
         clientRef: z.string().min(1).max(120).optional(),
+        reservedNumber: z.number().int().min(1).optional(),
         notes: z.string().optional(),
         lines: z
           .array(

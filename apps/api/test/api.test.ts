@@ -425,6 +425,101 @@ describe('venta por HTTP', () => {
   })
 })
 
+describe('bloques de numeración por HTTP', () => {
+  it('aparta un bloque y lo saca de la serie', async () => {
+    const negocio = await negocioListo()
+
+    const reservado = await app.inject({
+      method: 'POST',
+      url: `/stations/${negocio.stationId}/number-blocks`,
+      headers: auth(negocio.token),
+      payload: { count: 5 },
+    })
+
+    expect(reservado.statusCode).toBe(201)
+    expect(reservado.json().block.from).toBe(1)
+    expect(reservado.json().block.to).toBe(5)
+
+    const listado = await app.inject({
+      method: 'GET',
+      url: `/stations/${negocio.stationId}/number-blocks`,
+      headers: auth(negocio.token),
+    })
+    expect(listado.json().blocks).toHaveLength(1)
+  })
+
+  it('LO QUE IMPORTA: una venta sin conexión sube con su número apartado', async () => {
+    const negocio = await negocioListo()
+    const creado = await app.inject({
+      method: 'POST',
+      url: '/products',
+      headers: auth(negocio.token),
+      payload: {
+        sku: 'HAR-1',
+        name: 'Harina',
+        taxRateId: negocio.taxRateIds.G,
+        price: { currency: 'USD', amount: '150' },
+        initialStock: '20000',
+      },
+    })
+
+    await app.inject({
+      method: 'POST',
+      url: `/stations/${negocio.stationId}/number-blocks`,
+      headers: auth(negocio.token),
+      payload: { count: 5 },
+    })
+
+    const venta = await app.inject({
+      method: 'POST',
+      url: '/sales',
+      headers: auth(negocio.token),
+      payload: {
+        stationId: negocio.stationId,
+        currency: 'USD',
+        reservedNumber: 3,
+        clientRef: 'caja1-offline-3',
+        lines: [{ productId: creado.json().productId, quantity: '2000' }],
+        payments: [{ method: 'EFECTIVO_BS', amount: { currency: 'VES', amount: '10975' } }],
+      },
+    })
+
+    expect(venta.statusCode).toBe(201)
+    expect(venta.json().fullNumber).toBe('NE-000003')
+  })
+
+  it('un número fuera del bloque se rechaza con 422', async () => {
+    const negocio = await negocioListo()
+    const creado = await app.inject({
+      method: 'POST',
+      url: '/products',
+      headers: auth(negocio.token),
+      payload: {
+        sku: 'HAR-1',
+        name: 'Harina',
+        taxRateId: negocio.taxRateIds.G,
+        price: { currency: 'USD', amount: '150' },
+      },
+    })
+
+    const venta = await app.inject({
+      method: 'POST',
+      url: '/sales',
+      headers: auth(negocio.token),
+      payload: {
+        stationId: negocio.stationId,
+        currency: 'USD',
+        reservedNumber: 99,
+        lines: [{ productId: creado.json().productId, quantity: '2000' }],
+        payments: [{ method: 'EFECTIVO_BS', amount: { currency: 'VES', amount: '10975' } }],
+      },
+    })
+
+    expect(venta.statusCode).toBe(422)
+    expect(venta.json().error).toMatch(/no pertenece a ningún bloque/)
+  })
+})
+
 describe('caja por HTTP', () => {
   it('abre, vende y cierra con arqueo', async () => {
     const negocio = await negocioListo()
