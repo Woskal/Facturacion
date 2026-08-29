@@ -5,12 +5,15 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 
 ## Estado
 
-**Fase 0 — Cimientos.** Casi completa.
+**Fase 0 — Cimientos.** Completa.
 
 - [x] Monorepo y configuración de TypeScript
 - [x] `@fve/money` — núcleo monetario con su suite de tests
 - [x] Esquema de base de datos y aislamiento multi-tenant
-- [ ] Autenticación
+- [x] Autenticación, sesiones y permisos por rol
+
+Siguiente: **Fase 1 — Núcleo transaccional.** Tasa del día, catálogo, clientes,
+punto de venta y cierre de caja.
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
@@ -39,6 +42,7 @@ docs/
 packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios
+  auth/                  Autenticación, sesiones opacas y permisos por rol
 ```
 
 ## Entorno de desarrollo

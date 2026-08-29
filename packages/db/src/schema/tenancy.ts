@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { boolean, index, integer, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 import { archivedAt, createdAt, primaryId, updatedAt } from './columns'
 import { idKind, memberRole } from './enums'
@@ -41,6 +41,10 @@ export const users = pgTable(
     email: text('email').notNull(),
     fullName: text('full_name').notNull(),
     passwordHash: text('password_hash').notNull(),
+    /** Intentos fallidos consecutivos. Se reinicia con cada ingreso correcto. */
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    /** Bloqueo temporal tras demasiados intentos fallidos. */
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),

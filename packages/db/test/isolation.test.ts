@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { withTenant, type Database } from '../src/client'
 import * as schema from '../src/schema/index'
-import { TENANT_SCOPED_TABLES } from '../src/tenancy'
+import { PLATFORM_TABLES, TENANT_SCOPED_TABLES } from '../src/tenancy'
 import { connect, issueDocument, resetDatabase, seedTenant, type SeededTenant } from './helpers'
 
 let db: Database
@@ -48,6 +48,36 @@ describe('cobertura del aislamiento', () => {
       // saltaría la política y el aislamiento sería decorativo.
       expect(row.relforcerowsecurity, `${row.relname} sin FORCE`).toBe(true)
     }
+  })
+
+  it('las tablas de plataforma quedan fuera del aislamiento a propósito', async () => {
+    const rows = await db.execute<{ relname: string; relrowsecurity: boolean }>(sql`
+      SELECT relname, relrowsecurity
+      FROM pg_class
+      WHERE relname = ANY(${sql.raw(`ARRAY[${PLATFORM_TABLES.map((t) => `'${t}'`).join(',')}]`)})
+    `)
+    expect([...rows]).toHaveLength(PLATFORM_TABLES.length)
+    for (const row of rows) {
+      expect(row.relrowsecurity, `${row.relname} no debería tener RLS`).toBe(false)
+    }
+  })
+
+  it('ninguna tabla está en las dos listas', () => {
+    const overlap = TENANT_SCOPED_TABLES.filter((table) =>
+      (PLATFORM_TABLES as readonly string[]).includes(table),
+    )
+    expect(overlap).toEqual([])
+  })
+
+  it('sessions queda fuera por nombre de columna, no por descuido', async () => {
+    // Su columna se llama `active_tenant_id`: no es el dueño de la fila, es el
+    // negocio que la sesión tiene seleccionado. Si alguien la renombrara a
+    // `tenant_id`, el test de cobertura de arriba lo detectaría de inmediato.
+    const rows = await db.execute<{ column_name: string }>(sql`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'sessions' AND column_name LIKE '%tenant%'
+    `)
+    expect([...rows].map((row) => row.column_name)).toEqual(['active_tenant_id'])
   })
 
   it('el rol de la aplicación no es superusuario', async () => {

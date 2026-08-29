@@ -53,6 +53,27 @@ export async function withTenant<T>(
 }
 
 /**
+ * Ejecuta trabajo en nombre de una persona, sin negocio activo.
+ *
+ * Es lo que usa el login para leer las membresías de alguien antes de saber a
+ * qué negocio va a entrar. Solo habilita la política `memberships_self_read`,
+ * que permite leer las propias membresías y nada más.
+ *
+ * No sustituye a `withTenant`: una vez elegido el negocio, todo lo demás pasa
+ * por el contexto de negocio como siempre.
+ */
+export async function withUser<T>(
+  db: Database,
+  userId: string,
+  work: (tx: Parameters<Parameters<Database['transaction']>[0]>[0]) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.user_id', ${userId}, true)`)
+    return work(tx)
+  })
+}
+
+/**
  * Ejecuta trabajo sin contexto de negocio, para tareas de plataforma: registrar
  * un negocio nuevo, migrar, administrar suscripciones. Debe usarse poco y
  * conscientemente.

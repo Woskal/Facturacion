@@ -19,7 +19,8 @@ export async function resetDatabase(db: Database): Promise<void> {
       expenses, expense_categories, stock_movements, document_payments,
       document_tax_breakdown, document_lines, documents, number_reservations,
       document_series, customers, product_prices, products, price_lists,
-      tax_rates, exchange_rates, stations, memberships, users, tenants
+      tax_rates, exchange_rates, station_credentials, sessions, stations,
+      memberships, users, tenants
     RESTART IDENTITY CASCADE
   `)
 }
