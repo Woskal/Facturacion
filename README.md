@@ -21,6 +21,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Cierre de caja y arqueo
 - [x] API HTTP
 - [x] Interfaz web: venta, catálogo, clientes, caja y panel del operador
+- [x] Reportes y libro de ventas
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.

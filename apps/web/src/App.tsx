@@ -9,6 +9,7 @@ import { Clientes } from './pages/Clientes'
 import { ElegirNegocio } from './pages/ElegirNegocio'
 import { Login } from './pages/Login'
 import { Operador } from './pages/Operador'
+import { Reportes } from './pages/Reportes'
 import { Venta } from './pages/Venta'
 
 type Estado =
@@ -17,13 +18,14 @@ type Estado =
   | { fase: 'eligiendo'; memberships: Membership[] }
   | { fase: 'dentro'; negocio: string; tenantId: string }
 
-type Seccion = 'venta' | 'catalogo' | 'clientes' | 'caja' | 'plataforma'
+type Seccion = 'venta' | 'catalogo' | 'clientes' | 'caja' | 'reportes' | 'plataforma'
 
 const SECCIONES: { clave: Seccion; nombre: string }[] = [
   { clave: 'venta', nombre: 'Venta' },
   { clave: 'catalogo', nombre: 'Catálogo' },
   { clave: 'clientes', nombre: 'Clientes' },
   { clave: 'caja', nombre: 'Caja' },
+  { clave: 'reportes', nombre: 'Reportes' },
 ]
 
 export function App() {
@@ -188,6 +190,7 @@ export function App() {
 
       {rate && seccion === 'catalogo' ? <Catalogo rate={rate} /> : null}
       {rate && seccion === 'clientes' ? <Clientes rate={rate} /> : null}
+      {seccion === 'reportes' ? <Reportes /> : null}
 
       {rate && stationId && seccion === 'venta' ? (
         <Venta rate={rate} stationId={stationId} onVendido={() => void cargarTasa()} />
@@ -195,7 +198,7 @@ export function App() {
 
       {rate && stationId && seccion === 'caja' ? <Caja stationId={stationId} rate={rate} /> : null}
 
-      {rate && !stationId && seccion !== 'plataforma' ? (
+      {rate && !stationId && seccion !== 'plataforma' && seccion !== 'reportes' ? (
         <Aviso tipo="alerta">Este negocio no tiene ninguna caja configurada, así que no se puede vender.</Aviso>
       ) : null}
     </Marco>

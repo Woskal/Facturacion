@@ -10,6 +10,7 @@ import {
   createCustomer,
   createProduct,
   createSale,
+  dailySales,
   fetchBcvRate,
   customerHistory,
   getCashSessionSummary,
@@ -22,10 +23,14 @@ import {
   lowStockProducts,
   openCashSession,
   searchCustomers,
+  salesBook,
+  salesBookToCsv,
+  salesByMethod,
   searchProducts,
   setRate,
   syncBcvRate,
   toIsoDate,
+  topProducts,
   updateCustomer,
   updateProduct,
   voidSale,
@@ -105,6 +110,57 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
       userId: ctx.userId,
     })
     return reply.send(result)
+  })
+
+  // --- Reportes -------------------------------------------------------------
+
+  const rangoSchema = z.object({ from: isoDateSchema, to: isoDateSchema })
+
+  /**
+   * Libro de ventas del período.
+   *
+   * Sale de lo que quedó persistido en cada documento, nunca de un recálculo:
+   * un libro recalculado con el código de hoy da un número distinto al que se
+   * declaró.
+   */
+  app.get('/reports/sales-book', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ book: await salesBook(db, { tenantId: ctx.activeTenantId, ...rango }) })
+  })
+
+  /** El mismo libro en CSV, para abrirlo en una hoja de cálculo. */
+  app.get('/reports/sales-book.csv', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    const book = await salesBook(db, { tenantId: ctx.activeTenantId, ...rango })
+
+    return reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="libro-de-ventas-${rango.from}-a-${rango.to}.csv"`)
+      // Marca de orden de bytes para que Excel reconozca los acentos.
+      .send('﻿' + salesBookToCsv(book))
+  })
+
+  app.get('/reports/daily-sales', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ days: await dailySales(db, { tenantId: ctx.activeTenantId, ...rango }) })
+  })
+
+  app.get('/reports/by-method', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ methods: await salesByMethod(db, { tenantId: ctx.activeTenantId, ...rango }) })
+  })
+
+  app.get('/reports/top-products', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    const query = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }).parse(request.query)
+    return reply.send({
+      products: await topProducts(db, { tenantId: ctx.activeTenantId, ...rango, limit: query.limit }),
+    })
   })
 
   // --- Catálogo -------------------------------------------------------------

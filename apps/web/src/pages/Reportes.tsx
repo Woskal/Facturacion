@@ -1,0 +1,309 @@
+import { useCallback, useEffect, useState } from 'react'
+import { formatMoney, money, type Money } from '@fve/money'
+
+import { ApiError, api, getToken, toMoney, type MoneyJson } from '../api'
+import { cantidad } from '../formato'
+import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+
+interface FilaLibro {
+  date: string
+  fullNumber: string
+  controlNumber: string | null
+  customerName: string
+  voided: boolean
+  total: MoneyJson
+  exempt: MoneyJson
+  baseGeneral: MoneyJson
+  ivaGeneral: MoneyJson
+  baseReducida: MoneyJson
+  ivaReducida: MoneyJson
+  baseSuntuaria: MoneyJson
+  ivaSuntuaria: MoneyJson
+  igtf: MoneyJson
+}
+
+interface Libro {
+  from: string
+  to: string
+  rows: FilaLibro[]
+  totals: Omit<FilaLibro, 'date' | 'fullNumber' | 'controlNumber' | 'customerName' | 'voided'>
+}
+
+interface Dia {
+  date: string
+  documents: number
+  totalVes: MoneyJson
+  totalUsd: MoneyJson
+}
+
+interface Medio {
+  method: string
+  currency: 'VES' | 'USD'
+  received: MoneyJson
+  count: number
+}
+
+interface Producto {
+  productId: string | null
+  sku: string | null
+  name: string
+  quantity: string
+  totalVes: MoneyJson
+}
+
+const NOMBRES: Record<string, string> = {
+  EFECTIVO_BS: 'Efectivo Bs',
+  EFECTIVO_USD: 'Efectivo divisa',
+  PAGO_MOVIL: 'Pago móvil',
+  TRANSFERENCIA_BS: 'Transferencia',
+  PUNTO_VENTA: 'Punto de venta',
+  ZELLE: 'Zelle',
+  USDT: 'USDT',
+  CREDITO: 'Crédito',
+}
+
+/** Primer y último día del mes en curso, que es el período que se declara. */
+function mesActual(): { desde: string; hasta: string } {
+  const hoy = new Date()
+  const dos = (n: number) => String(n).padStart(2, '0')
+  const año = hoy.getFullYear()
+  const mes = hoy.getMonth()
+  const ultimo = new Date(año, mes + 1, 0).getDate()
+  return { desde: `${año}-${dos(mes + 1)}-01`, hasta: `${año}-${dos(mes + 1)}-${dos(ultimo)}` }
+}
+
+export function Reportes() {
+  const inicial = mesActual()
+  const [desde, setDesde] = useState(inicial.desde)
+  const [hasta, setHasta] = useState(inicial.hasta)
+  const [libro, setLibro] = useState<Libro | null>(null)
+  const [dias, setDias] = useState<Dia[]>([])
+  const [medios, setMedios] = useState<Medio[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(false)
+
+  const cargar = useCallback(async () => {
+    setCargando(true)
+    const rango = `from=${desde}&to=${hasta}`
+
+    try {
+      const [l, d, m, p] = await Promise.all([
+        api.get<{ book: Libro }>(`/reports/sales-book?${rango}`),
+        api.get<{ days: Dia[] }>(`/reports/daily-sales?${rango}`),
+        api.get<{ methods: Medio[] }>(`/reports/by-method?${rango}`),
+        api.get<{ products: Producto[] }>(`/reports/top-products?${rango}&limit=10`),
+      ])
+      setLibro(l.book)
+      setDias(d.days)
+      setMedios(m.methods)
+      setProductos(p.products)
+      setError(null)
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar los reportes.')
+    } finally {
+      setCargando(false)
+    }
+  }, [desde, hasta])
+
+  useEffect(() => {
+    void cargar()
+  }, [cargar])
+
+  /**
+   * Descarga el CSV.
+   *
+   * Se baja con `fetch` y no con un enlace directo porque la ruta exige la
+   * cabecera de sesión, y un `<a href>` no la lleva.
+   */
+  async function descargar() {
+    try {
+      const respuesta = await fetch(`/api/reports/sales-book.csv?from=${desde}&to=${hasta}`, {
+        headers: { authorization: `Bearer ${getToken() ?? ''}` },
+      })
+      if (!respuesta.ok) throw new Error('fallo')
+
+      const blob = await respuesta.blob()
+      const url = URL.createObjectURL(blob)
+      const enlace = document.createElement('a')
+      enlace.href = url
+      enlace.download = `libro-de-ventas-${desde}-a-${hasta}.csv`
+      enlace.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('No se pudo descargar el libro.')
+    }
+  }
+
+  const totalPeriodo = dias.reduce<Money>(
+    (acumulado, dia) => money('VES', acumulado.amount + BigInt(dia.totalVes.amount)),
+    money('VES', 0n),
+  )
+  const documentos = dias.reduce((acumulado, dia) => acumulado + dia.documents, 0)
+
+  return (
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
+      <div className="flex flex-wrap items-end gap-2">
+        <Campo etiqueta="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+        <Campo etiqueta="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+        <Boton onClick={() => void cargar()} disabled={cargando}>
+          {cargando ? 'Cargando…' : 'Actualizar'}
+        </Boton>
+        <div className="flex-1" />
+        <Boton variante="principal" onClick={() => void descargar()} disabled={!libro || libro.rows.length === 0}>
+          Descargar libro de ventas
+        </Boton>
+      </div>
+
+      {error ? <Aviso>{error}</Aviso> : null}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Resumen titulo="Vendido" valor={formatMoney(totalPeriodo)} />
+        <Resumen titulo="Documentos" valor={String(documentos)} />
+        <Resumen
+          titulo="Base gravada"
+          valor={libro ? formatMoney(toMoney(libro.totals.baseGeneral)) : '—'}
+        />
+        <Resumen titulo="IVA cobrado" valor={libro ? formatMoney(toMoney(libro.totals.ivaGeneral)) : '—'} />
+      </div>
+
+      <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">
+        <Tarjeta className="min-h-0 overflow-auto">
+          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
+            Cobrado por medio de pago
+          </h2>
+          {medios.length === 0 ? (
+            <Vacio>Sin cobros en el período.</Vacio>
+          ) : (
+            <ul>
+              {medios.map((medio) => (
+                <li
+                  key={`${medio.method}-${medio.currency}`}
+                  className="flex items-center justify-between border-b border-borde/60 px-4 py-2 text-sm last:border-0"
+                >
+                  <span>
+                    {NOMBRES[medio.method] ?? medio.method}
+                    <span className="ml-2 text-xs text-apagado">{medio.count}×</span>
+                  </span>
+                  <span className="cifra font-medium">{formatMoney(toMoney(medio.received))}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Tarjeta>
+
+        <Tarjeta className="min-h-0 overflow-auto">
+          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
+            Lo más vendido
+          </h2>
+          {productos.length === 0 ? (
+            <Vacio>Sin ventas en el período.</Vacio>
+          ) : (
+            <ul>
+              {productos.map((producto, indice) => (
+                <li
+                  key={producto.productId ?? indice}
+                  className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2 text-sm last:border-0"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{producto.name}</span>
+                    <span className="cifra block text-xs text-apagado">
+                      {cantidad(BigInt(producto.quantity))} vendidos
+                    </span>
+                  </span>
+                  <span className="cifra shrink-0 font-medium">{formatMoney(toMoney(producto.totalVes))}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Tarjeta>
+      </div>
+
+      <Tarjeta className="min-h-0 flex-1 overflow-auto">
+        <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
+          Libro de ventas
+        </h2>
+        {!libro || libro.rows.length === 0 ? (
+          <Vacio>No hay documentos emitidos en el período.</Vacio>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="border-b border-borde text-xs text-apagado">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Fecha</th>
+                <th className="px-2 py-2 text-left font-medium">Documento</th>
+                <th className="px-2 py-2 text-left font-medium">Cliente</th>
+                <th className="px-2 py-2 text-right font-medium">Exento</th>
+                <th className="px-2 py-2 text-right font-medium">Base 16%</th>
+                <th className="px-2 py-2 text-right font-medium">IVA</th>
+                <th className="px-2 py-2 text-right font-medium">IGTF</th>
+                <th className="px-3 py-2 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {libro.rows.map((fila) => (
+                <tr
+                  key={fila.fullNumber}
+                  className={`border-b border-borde/60 last:border-0 ${fila.voided ? 'text-apagado' : ''}`}
+                >
+                  <td className="cifra px-3 py-1.5">{fila.date}</td>
+                  <td className="cifra px-2 py-1.5">
+                    {fila.fullNumber}
+                    {fila.voided ? <span className="ml-2 text-xs text-error">anulado</span> : null}
+                  </td>
+                  <td className="max-w-48 truncate px-2 py-1.5">{fila.customerName}</td>
+                  <td className="cifra px-2 py-1.5 text-right">{formatMoney(toMoney(fila.exempt), { symbol: false })}</td>
+                  <td className="cifra px-2 py-1.5 text-right">
+                    {formatMoney(toMoney(fila.baseGeneral), { symbol: false })}
+                  </td>
+                  <td className="cifra px-2 py-1.5 text-right">
+                    {formatMoney(toMoney(fila.ivaGeneral), { symbol: false })}
+                  </td>
+                  <td className="cifra px-2 py-1.5 text-right">{formatMoney(toMoney(fila.igtf), { symbol: false })}</td>
+                  <td className="cifra px-3 py-1.5 text-right font-medium">
+                    {formatMoney(toMoney(fila.total), { symbol: false })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="sticky bottom-0 border-t border-borde bg-white text-sm font-medium">
+              <tr>
+                <td className="px-3 py-2" colSpan={3}>
+                  Totales del período
+                </td>
+                <td className="cifra px-2 py-2 text-right">
+                  {formatMoney(toMoney(libro.totals.exempt), { symbol: false })}
+                </td>
+                <td className="cifra px-2 py-2 text-right">
+                  {formatMoney(toMoney(libro.totals.baseGeneral), { symbol: false })}
+                </td>
+                <td className="cifra px-2 py-2 text-right">
+                  {formatMoney(toMoney(libro.totals.ivaGeneral), { symbol: false })}
+                </td>
+                <td className="cifra px-2 py-2 text-right">
+                  {formatMoney(toMoney(libro.totals.igtf), { symbol: false })}
+                </td>
+                <td className="cifra px-3 py-2 text-right">
+                  {formatMoney(toMoney(libro.totals.total), { symbol: false })}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </Tarjeta>
+
+      <p className="text-center text-xs text-apagado">
+        Todos los importes en bolívares, como se lleva el libro. Los documentos anulados aparecen en cero para
+        justificar el salto en la numeración.
+      </p>
+    </div>
+  )
+}
+
+function Resumen({ titulo, valor }: { titulo: string; valor: string }) {
+  return (
+    <Tarjeta className="px-4 py-3">
+      <span className="block text-xs text-apagado">{titulo}</span>
+      <span className="cifra mt-0.5 block text-lg font-semibold">{valor}</span>
+    </Tarjeta>
+  )
+}
