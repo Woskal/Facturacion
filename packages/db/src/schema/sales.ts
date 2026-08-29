@@ -15,6 +15,7 @@ import {
 import { amount, createdAt, primaryId, rateScaled, updatedAt } from './columns'
 import { currency, documentKind, documentStatus, paymentMethod, priceMode } from './enums'
 import { customers, exchangeRates, products, taxRates } from './catalog'
+import { cashSessions } from './cash'
 import { stations, tenants, users } from './tenancy'
 
 /**
@@ -110,6 +111,14 @@ export const documents = pgTable(
     stationId: uuid('station_id')
       .notNull()
       .references(() => stations.id),
+    /**
+     * Turno de caja al que pertenece la venta.
+     *
+     * Es un vínculo explícito y no una deducción por ventana de tiempo: cuadrar
+     * el arqueo mirando `issued_at` entre apertura y cierre falla justo en los
+     * bordes, que es cuando más importa.
+     */
+    cashSessionId: uuid('cash_session_id').references(() => cashSessions.id),
     issuedByUserId: uuid('issued_by_user_id')
       .notNull()
       .references(() => users.id),
@@ -149,6 +158,13 @@ export const documents = pgTable(
     /** Total cobrado: documento más IGTF. */
     grandTotalUsd: amount('grand_total_usd').notNull().default(sql`0`),
     grandTotalVes: amount('grand_total_ves').notNull().default(sql`0`),
+
+    /**
+     * Vuelto entregado. Sale del efectivo, así que sin esto el arqueo nunca
+     * cuadra: la caja tendría siempre de menos y parecería un faltante.
+     */
+    changeAmount: amount('change_amount').notNull().default(sql`0`),
+    changeCurrency: currency('change_currency'),
 
     notes: text('notes'),
     /**

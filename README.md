@@ -17,7 +17,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Tasa del día con histórico
 - [x] Emisión y anulación de ventas
 - [ ] Catálogo y clientes (altas y consultas)
-- [ ] Cierre de caja y arqueo
+- [x] Cierre de caja y arqueo
 - [ ] API HTTP
 - [ ] Interfaz web
 

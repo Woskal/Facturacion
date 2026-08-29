@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { schema, withTenant, type Database } from '@fve/db'
 import {
   alicuota,
@@ -52,6 +52,12 @@ export interface CreateSaleInput {
   readonly stationId: string
   readonly userId: string
   readonly customerId?: string | undefined
+  /**
+   * Turno de caja. Si no se indica, se toma el turno abierto de la estación:
+   * una venta hecha con la caja abierta pertenece a ese turno, y depender de
+   * que el llamador lo recuerde es pedirle a alguien que no se equivoque nunca.
+   */
+  readonly cashSessionId?: string | undefined
   readonly kind?: DocumentKind
   readonly currency: Currency
   readonly lines: readonly SaleLineInput[]
@@ -111,6 +117,17 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
       if (previous) {
         return rebuildFromStored(tx, previous, rate)
       }
+    }
+
+    // --- Turno de caja ------------------------------------------------------
+    let cashSessionId = input.cashSessionId ?? null
+    if (!cashSessionId) {
+      const open = await tx
+        .select({ id: schema.cashSessions.id })
+        .from(schema.cashSessions)
+        .where(and(eq(schema.cashSessions.stationId, input.stationId), isNull(schema.cashSessions.closedAt)))
+        .limit(1)
+      cashSessionId = open[0]?.id ?? null
     }
 
     // --- Configuración del negocio -----------------------------------------
@@ -177,6 +194,7 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
         number: assigned,
         fullNumber,
         stationId: input.stationId,
+        cashSessionId,
         issuedByUserId: input.userId,
         customerId: input.customerId ?? null,
         status: 'DRAFT',
@@ -184,6 +202,8 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
         exchangeRateId: rate.id,
         rateBsPerUsd: rate.bsPerUsd,
         rateEffectiveOn: rate.date,
+        changeAmount: settlement.change.amount,
+        changeCurrency: isPositive(settlement.change) ? settlement.changeCurrency : null,
         notes: input.notes ?? null,
         clientRef: input.clientRef ?? null,
         ...amounts,

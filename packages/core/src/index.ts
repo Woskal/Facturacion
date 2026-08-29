@@ -18,3 +18,4 @@
 export * from './errors'
 export * from './rates'
 export * from './sales'
+export * from './cash'
