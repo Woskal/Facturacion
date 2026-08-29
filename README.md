@@ -19,7 +19,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Alta de negocios y cuentas por el operador
 - [x] Catálogo, inventario, clientes y cartera
 - [x] Cierre de caja y arqueo
-- [ ] API HTTP
+- [x] API HTTP
 - [ ] Interfaz web
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
@@ -69,6 +69,8 @@ Normativa de referencia: Providencia 0071, SNAT/2024/000102 (Gaceta 43.032,
 ```
 docs/
   dominio-venezuela.md   Hallazgos de campo sobre el dominio y la competencia
+apps/
+  api/                   API HTTP sobre Fastify
 packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios
@@ -123,4 +125,10 @@ npm test
 
 ```bash
 npm run typecheck
+```
+
+Levantar la API:
+
+```bash
+npm run dev --workspace=@fve/api
 ```

@@ -36,15 +36,15 @@ export type DocumentKind = 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CRE
 
 export interface SaleLineInput {
   /** Producto del catálogo. Si va, el precio y la alícuota salen de él. */
-  readonly productId?: string
+  readonly productId?: string | undefined
   /** Línea libre: exige descripción, precio y alícuota. */
-  readonly description?: string
-  readonly taxRateId?: string
+  readonly description?: string | undefined
+  readonly taxRateId?: string | undefined
   /** Cantidad en milésimas: 1500 son 1,5 unidades. */
   readonly quantity: bigint
   /** Precio unitario que pisa al del catálogo. En cualquier moneda. */
-  readonly unitPrice?: Money
-  readonly discountBps?: number
+  readonly unitPrice?: Money | undefined
+  readonly discountBps?: number | undefined
 }
 
 export interface CreateSaleInput {
@@ -58,11 +58,11 @@ export interface CreateSaleInput {
    * que el llamador lo recuerde es pedirle a alguien que no se equivoque nunca.
    */
   readonly cashSessionId?: string | undefined
-  readonly kind?: DocumentKind
+  readonly kind?: DocumentKind | undefined
   readonly currency: Currency
   readonly lines: readonly SaleLineInput[]
   readonly payments: readonly PaymentInput[]
-  readonly changeCurrency?: Currency
+  readonly changeCurrency?: Currency | undefined
   /**
    * Identificador que asigna la caja al crear la venta, incluso sin conexión.
    * Reenviar la misma venta dos veces devuelve el mismo documento en vez de
@@ -70,7 +70,7 @@ export interface CreateSaleInput {
    */
   readonly clientRef?: string | undefined
   readonly notes?: string | undefined
-  readonly now?: Date
+  readonly now?: Date | undefined
 }
 
 export interface CreatedSale {
@@ -339,7 +339,7 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
  */
 export async function voidSale(
   db: Database,
-  input: { tenantId: string; documentId: string; userId: string; reason: string; now?: Date },
+  input: { tenantId: string; documentId: string; userId: string; reason: string; now?: Date | undefined },
 ): Promise<void> {
   const now = input.now ?? new Date()
 
@@ -408,7 +408,7 @@ interface ResolvedLine {
     unitPrice: Money
     alicuota: Alicuota
     priceMode: PriceMode
-    discountBps?: number
+    discountBps?: number | undefined
   }
 }
 

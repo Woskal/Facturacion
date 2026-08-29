@@ -21,14 +21,14 @@ export interface CreateProductInput {
   readonly taxRateId: string
   readonly price: Money
   readonly barcode?: string | undefined
-  readonly unit?: string
-  readonly priceMode?: PriceMode
-  readonly tracksStock?: boolean
+  readonly unit?: string | undefined
+  readonly priceMode?: PriceMode | undefined
+  readonly tracksStock?: boolean | undefined
   /** Existencia mínima en milésimas. Dispara la alerta de reposición. */
-  readonly minStock?: bigint
+  readonly minStock?: bigint | undefined
   /** Existencia inicial en milésimas. */
-  readonly initialStock?: bigint
-  readonly now?: Date
+  readonly initialStock?: bigint | undefined
+  readonly now?: Date | undefined
 }
 
 /**
@@ -107,13 +107,13 @@ export async function createProduct(
 export interface UpdateProductInput {
   readonly tenantId: string
   readonly productId: string
-  readonly name?: string
-  readonly barcode?: string | null
-  readonly unit?: string
-  readonly taxRateId?: string
-  readonly priceMode?: PriceMode
-  readonly minStock?: bigint
-  readonly price?: Money
+  readonly name?: string | undefined
+  readonly barcode?: string | null | undefined
+  readonly unit?: string | undefined
+  readonly taxRateId?: string | undefined
+  readonly priceMode?: PriceMode | undefined
+  readonly minStock?: bigint | undefined
+  readonly price?: Money | undefined
 }
 
 /**
@@ -175,7 +175,7 @@ export async function updateProduct(db: Database, input: UpdateProductInput): Pr
  */
 export async function archiveProduct(
   db: Database,
-  input: { tenantId: string; productId: string; now?: Date },
+  input: { tenantId: string; productId: string; now?: Date | undefined },
 ): Promise<void> {
   const now = input.now ?? new Date()
   await withTenant(db, input.tenantId, (tx) =>
@@ -208,7 +208,7 @@ export interface ProductView {
  */
 export async function searchProducts(
   db: Database,
-  input: { tenantId: string; query?: string; limit?: number; onlyBelowMinimum?: boolean },
+  input: { tenantId: string; query?: string | undefined; limit?: number | undefined; onlyBelowMinimum?: boolean | undefined },
 ): Promise<ProductView[]> {
   const pattern = `%${(input.query ?? '').trim()}%`
   const limit = input.limit ?? 50
@@ -286,7 +286,7 @@ export async function adjustStock(
     /** Diferencia en milésimas. Negativa para una salida. */
     quantity: bigint
     reason: string
-    now?: Date
+    now?: Date | undefined
   },
 ): Promise<void> {
   if (input.quantity === 0n) {

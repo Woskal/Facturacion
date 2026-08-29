@@ -24,7 +24,7 @@ export function toIsoDate(value: Date): IsoDate {
  */
 export async function setRate(
   db: Database,
-  input: { tenantId: string; value: string; effectiveOn: IsoDate; source?: RateSource; userId?: string },
+  input: { tenantId: string; value: string; effectiveOn: IsoDate; source?: RateSource | undefined; userId?: string | undefined },
 ): Promise<Rate> {
   const parsed = parseRate(input.value, input.effectiveOn, input.source ?? 'BCV')
 

@@ -44,8 +44,8 @@ export interface CreateCustomerInput {
   readonly email?: string | undefined
   readonly address?: string | undefined
   /** Si retiene IVA al pagar. Cambia cómo se salda su cuenta. */
-  readonly specialTaxpayer?: boolean
-  readonly creditLimit?: bigint
+  readonly specialTaxpayer?: boolean | undefined
+  readonly creditLimit?: bigint | undefined
 }
 
 export async function createCustomer(db: Database, input: CreateCustomerInput): Promise<{ customerId: string }> {
@@ -89,12 +89,12 @@ export async function updateCustomer(
   input: {
     tenantId: string
     customerId: string
-    name?: string
-    phone?: string | null
-    email?: string | null
-    address?: string | null
-    specialTaxpayer?: boolean
-    creditLimit?: bigint
+    name?: string | undefined
+    phone?: string | null | undefined
+    email?: string | null | undefined
+    address?: string | null | undefined
+    specialTaxpayer?: boolean | undefined
+    creditLimit?: bigint | undefined
   },
 ): Promise<void> {
   const changes: Record<string, unknown> = {}
@@ -116,7 +116,7 @@ export async function updateCustomer(
 
 export async function archiveCustomer(
   db: Database,
-  input: { tenantId: string; customerId: string; now?: Date },
+  input: { tenantId: string; customerId: string; now?: Date | undefined },
 ): Promise<void> {
   const now = input.now ?? new Date()
   await withTenant(db, input.tenantId, (tx) =>
@@ -136,7 +136,7 @@ export interface CustomerView {
 /** Busca clientes por nombre o identificación. */
 export async function searchCustomers(
   db: Database,
-  input: { tenantId: string; query?: string; limit?: number },
+  input: { tenantId: string; query?: string | undefined; limit?: number | undefined },
 ): Promise<CustomerView[]> {
   const pattern = `%${(input.query ?? '').trim()}%`
   const limit = input.limit ?? 50
@@ -204,7 +204,7 @@ export interface ReceivableView {
  */
 export async function listReceivables(
   db: Database,
-  input: { tenantId: string; customerId?: string; includeSettled?: boolean },
+  input: { tenantId: string; customerId?: string | undefined; includeSettled?: boolean | undefined },
 ): Promise<ReceivableView[]> {
   const rows = await withTenant(db, input.tenantId, (tx) =>
     tx.execute<{
@@ -270,10 +270,10 @@ export async function addReceivableEntry(
     receivableId: string
     kind: ReceivableEntryKind
     amount: Money
-    method?: string
+    method?: string | undefined
     reference?: string | undefined
     retentionNumber?: string | undefined
-    now?: Date
+    now?: Date | undefined
   },
 ): Promise<{ balance: Money; settled: boolean }> {
   const now = input.now ?? new Date()
@@ -350,7 +350,7 @@ export async function addReceivableEntry(
 /** Documentos emitidos a un cliente, del más reciente al más antiguo. */
 export async function customerHistory(
   db: Database,
-  input: { tenantId: string; customerId: string; limit?: number },
+  input: { tenantId: string; customerId: string; limit?: number | undefined },
 ) {
   return withTenant(db, input.tenantId, (tx) =>
     tx

@@ -42,7 +42,7 @@ export const METHODS: Readonly<Record<PaymentMethod, MethodSpec>> = Object.freez
 export interface PaymentInput {
   readonly method: PaymentMethod
   readonly amount: Money
-  readonly reference?: string
+  readonly reference?: string | undefined
 }
 
 export interface SettledPayment extends PaymentInput {
@@ -56,10 +56,10 @@ export interface SettleInput {
   readonly total: Money
   readonly payments: readonly PaymentInput[]
   readonly rate: Rate
-  readonly igtfBps?: number
+  readonly igtfBps?: number | undefined
   /** Moneda en que se entrega el vuelto. Por defecto, la del documento. */
-  readonly changeCurrency?: Currency
-  readonly rounding?: RoundingMode
+  readonly changeCurrency?: Currency | undefined
+  readonly rounding?: RoundingMode | undefined
 }
 
 export interface Settlement {

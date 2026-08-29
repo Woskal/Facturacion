@@ -5,11 +5,11 @@ import { rateToDecimalString, type Rate } from './rate'
 
 export interface FormatOptions {
   /** Anteponer el símbolo de la moneda. Predeterminado: sí. */
-  readonly symbol?: boolean
+  readonly symbol?: boolean | undefined
   /** Separador de miles. Predeterminado: punto, como se escribe en Venezuela. */
-  readonly groupSeparator?: string
+  readonly groupSeparator?: string | undefined
   /** Separador decimal. Predeterminado: coma. */
-  readonly decimalSeparator?: string
+  readonly decimalSeparator?: string | undefined
 }
 
 /**

@@ -57,8 +57,8 @@ export async function openCashSession(
     tenantId: string
     stationId: string
     userId: string
-    opening?: readonly OpeningAmount[]
-    now?: Date
+    opening?: readonly OpeningAmount[] | undefined
+    now?: Date | undefined
   },
 ): Promise<{ sessionId: string }> {
   const now = input.now ?? new Date()
@@ -265,7 +265,7 @@ export async function closeCashSession(
     userId: string
     counted: readonly OpeningAmount[]
     notes?: string | undefined
-    now?: Date
+    now?: Date | undefined
   },
 ): Promise<CashSessionSummary> {
   const now = input.now ?? new Date()

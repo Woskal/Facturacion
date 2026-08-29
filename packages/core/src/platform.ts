@@ -57,9 +57,9 @@ export interface CreateTenantInput {
   readonly tradeName?: string | undefined
   readonly address?: string | undefined
   readonly phone?: string | undefined
-  readonly specialTaxpayer?: boolean
-  readonly igtfBps?: number
-  readonly now?: Date
+  readonly specialTaxpayer?: boolean | undefined
+  readonly igtfBps?: number | undefined
+  readonly now?: Date | undefined
 }
 
 export interface CreatedTenant {
@@ -176,7 +176,7 @@ export interface CreateUserInput {
   readonly password: string
   /** Negocio al que queda asignado. Si va vacío, la cuenta nace sin negocio. */
   readonly tenantId?: string | undefined
-  readonly now?: Date
+  readonly now?: Date | undefined
 }
 
 /**
@@ -221,7 +221,7 @@ export async function createUser(db: Database, input: CreateUserInput): Promise<
  */
 export async function attachUserToTenant(
   db: Database,
-  input: { actorUserId: string; userId: string; tenantId: string; now?: Date },
+  input: { actorUserId: string; userId: string; tenantId: string; now?: Date | undefined },
 ): Promise<void> {
   await assertPlatformAdmin(db, input.actorUserId)
   const now = input.now ?? new Date()
@@ -258,7 +258,7 @@ export async function attachUserToTenant(
  */
 export async function detachUserFromTenant(
   db: Database,
-  input: { actorUserId: string; userId: string; tenantId: string; now?: Date },
+  input: { actorUserId: string; userId: string; tenantId: string; now?: Date | undefined },
 ): Promise<void> {
   await assertPlatformAdmin(db, input.actorUserId)
   const now = input.now ?? new Date()
@@ -345,7 +345,7 @@ export async function listTenants(db: Database, actorUserId: string): Promise<Te
  */
 export async function suspendTenant(
   db: Database,
-  input: { actorUserId: string; tenantId: string; now?: Date },
+  input: { actorUserId: string; tenantId: string; now?: Date | undefined },
 ): Promise<void> {
   await assertPlatformAdmin(db, input.actorUserId)
   const now = input.now ?? new Date()
@@ -373,7 +373,7 @@ export async function suspendTenant(
 /** Reactiva un negocio suspendido. */
 export async function reactivateTenant(
   db: Database,
-  input: { actorUserId: string; tenantId: string; now?: Date },
+  input: { actorUserId: string; tenantId: string; now?: Date | undefined },
 ): Promise<void> {
   await assertPlatformAdmin(db, input.actorUserId)
   const now = input.now ?? new Date()

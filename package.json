@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Sistema de gestión y punto de venta para micronegocios en Venezuela",
+  "description": "Sistema de gesti\u00f3n y punto de venta para micronegocios en Venezuela",
   "workspaces": [
     "packages/*",
     "apps/*"

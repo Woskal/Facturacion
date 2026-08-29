@@ -68,7 +68,7 @@ export interface LineInput {
   readonly alicuota: Alicuota
   readonly priceMode: PriceMode
   /** Descuento de línea en puntos básicos (500 = 5%). */
-  readonly discountBps?: number
+  readonly discountBps?: number | undefined
 }
 
 export interface LineResult {
