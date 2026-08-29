@@ -342,3 +342,14 @@ export async function listTaxRates(db: Database, tenantId: string) {
       .orderBy(schema.taxRates.code),
   )
 }
+
+/** Cajas del negocio. El punto de venta necesita saber en cuál está. */
+export async function listStations(db: Database, tenantId: string) {
+  return withTenant(db, tenantId, (tx) =>
+    tx
+      .select({ stationId: schema.stations.id, name: schema.stations.name, code: schema.stations.code })
+      .from(schema.stations)
+      .where(and(eq(schema.stations.tenantId, tenantId), isNull(schema.stations.archivedAt)))
+      .orderBy(schema.stations.code),
+  )
+}

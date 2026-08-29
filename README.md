@@ -20,7 +20,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Catálogo, inventario, clientes y cartera
 - [x] Cierre de caja y arqueo
 - [x] API HTTP
-- [ ] Interfaz web
+- [x] Interfaz web: entrada, selección de negocio y punto de venta
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
@@ -71,6 +71,7 @@ docs/
   dominio-venezuela.md   Hallazgos de campo sobre el dominio y la competencia
 apps/
   api/                   API HTTP sobre Fastify
+  web/                   Interfaz web: punto de venta
 packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios
@@ -131,6 +132,12 @@ Levantar la API:
 
 ```bash
 npm run dev --workspace=@fve/api
+```
+
+Levantar la interfaz (usa la API por proxy en `/api`):
+
+```bash
+npm run dev --workspace=@fve/web
 ```
 
 ## Tasa del BCV

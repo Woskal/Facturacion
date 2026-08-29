@@ -17,6 +17,7 @@ import {
   getRateFor,
   listRates,
   listReceivables,
+  listStations,
   listTaxRates,
   lowStockProducts,
   openCashSession,
@@ -107,6 +108,11 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
   })
 
   // --- Catálogo -------------------------------------------------------------
+
+  app.get('/stations', async (request, reply) => {
+    const ctx = requireTenant(request)
+    return reply.send({ stations: await listStations(db, ctx.activeTenantId) })
+  })
 
   app.get('/tax-rates', async (request, reply) => {
     const ctx = requireTenant(request)
