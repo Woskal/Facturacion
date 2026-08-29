@@ -16,6 +16,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 
 - [x] Tasa del día con histórico
 - [x] Emisión y anulación de ventas
+- [x] Alta de negocios y cuentas por el operador
 - [ ] Catálogo y clientes (altas y consultas)
 - [x] Cierre de caja y arqueo
 - [ ] API HTTP
@@ -24,9 +25,22 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
 
-## Alcance de usuarios
+## Quién es quién
 
-Un usuario administrador por negocio, que puede hacer de todo dentro del suyo.
+**El operador de la plataforma** —quien vende el servicio— da de alta negocios y
+les asigna cuentas. Es una condición de la persona, no un rol dentro de un
+negocio, y no le da acceso automático a los datos de nadie: para entrar a un
+negocio hay que tener membresía en él, y crearla queda en su bitácora. El poder
+existe, pero deja rastro.
+
+El primer operador se crea con un script que corre en el servidor, porque solo
+un operador puede nombrar a otro:
+
+```bash
+npm run bootstrap-admin --workspace=@fve/core -- correo@ejemplo.ve "Nombre"
+```
+
+**El usuario de un negocio** puede hacer de todo dentro del suyo.
 No hay roles ni matriz de permisos: con un solo rol, cualquier comprobación
 devolvería siempre lo mismo. Lo que separa a un usuario de otro no es su rol
 sino su negocio, y de eso se encarga la seguridad por fila de Postgres.

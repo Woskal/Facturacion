@@ -45,6 +45,16 @@ export const users = pgTable(
     failedAttempts: integer('failed_attempts').notNull().default(0),
     /** Bloqueo temporal tras demasiados intentos fallidos. */
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    /**
+     * Operador de la plataforma: quien da de alta negocios y les asigna
+     * usuarios. Es una persona por encima de los negocios, no un rol dentro de
+     * uno — por eso vive aquí y no en `memberships`.
+     *
+     * No concede acceso automático a los datos de nadie: para entrar a un
+     * negocio hay que tener membresía en él, y crearla queda registrado en la
+     * bitácora. El poder existe, pero deja rastro.
+     */
+    isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),

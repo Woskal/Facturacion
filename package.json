@@ -17,6 +17,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "tsx": "^4.23.12",
     "typescript": "^5.6.3"
   }
 }

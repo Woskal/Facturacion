@@ -12,9 +12,11 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {
+    "@fve/auth": "*",
     "@fve/db": "*",
     "@fve/money": "*",
     "drizzle-orm": "^0.38.3"
