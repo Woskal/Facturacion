@@ -1,0 +1,22 @@
+{
+  "name": "facturacion-ve",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Sistema de gestión y punto de venta para micronegocios en Venezuela",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

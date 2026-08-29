@@ -1,0 +1,11 @@
+# Normaliza los finales de línea a LF en el repositorio, sin importar en qué
+# sistema se trabaje. Evita diffs completos cuando el proyecto pasa de Windows a
+# un servidor Linux.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary

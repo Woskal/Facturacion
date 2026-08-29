@@ -1,0 +1,22 @@
+{
+  "name": "@fve/money",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Núcleo monetario bimonetario (Bs/USD), IVA venezolano, IGTF y pagos mixtos. Aritmética entera exacta.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
