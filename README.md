@@ -12,8 +12,14 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Esquema de base de datos y aislamiento multi-tenant
 - [x] Autenticación y sesiones revocables
 
-Siguiente: **Fase 1 — Núcleo transaccional.** Tasa del día, catálogo, clientes,
-punto de venta y cierre de caja.
+**Fase 1 — Núcleo transaccional.** En curso.
+
+- [x] Tasa del día con histórico
+- [x] Emisión y anulación de ventas
+- [ ] Catálogo y clientes (altas y consultas)
+- [ ] Cierre de caja y arqueo
+- [ ] API HTTP
+- [ ] Interfaz web
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
@@ -53,6 +59,7 @@ packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios
   auth/                  Autenticación y sesiones opacas revocables
+  core/                  Operaciones de negocio: tasa, ventas, inventario, cartera
 ```
 
 ## Entorno de desarrollo
