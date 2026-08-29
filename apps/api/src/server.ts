@@ -6,10 +6,14 @@ import { bearerToken, registerErrorHandler, serializeBigInts } from './http'
 import { registerAuthRoutes } from './routes/auth'
 import { registerPlatformRoutes } from './routes/platform'
 import { registerBusinessRoutes } from './routes/business'
+import { startRateSync } from './rate-sync'
 
 export interface BuildOptions {
   readonly db: Database
-  readonly logger?: boolean
+  readonly logger?: boolean | undefined
+  /** Mantener la tasa del BCV al día sola. Se apaga en los tests. */
+  readonly syncRates?: boolean | undefined
+  readonly syncMinutes?: number | undefined
 }
 
 /** Rutas que se atienden sin sesión. Todo lo demás la exige. */
@@ -58,6 +62,15 @@ export function buildServer(options: BuildOptions): FastifyInstance {
   })
 
   app.get('/health', async () => ({ status: 'ok' }))
+
+  if (options.syncRates) {
+    const sync = startRateSync({
+      db: options.db,
+      logger: app.log,
+      minutes: options.syncMinutes,
+    })
+    app.addHook('onClose', async () => sync.stop())
+  }
 
   registerAuthRoutes(app, options.db)
   registerPlatformRoutes(app, options.db)

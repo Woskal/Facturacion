@@ -14,7 +14,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 
 **Fase 1 — Núcleo transaccional.** En curso.
 
-- [x] Tasa del día con histórico
+- [x] Tasa del día con histórico y sincronización automática del BCV
 - [x] Emisión y anulación de ventas
 - [x] Alta de negocios y cuentas por el operador
 - [x] Catálogo, inventario, clientes y cartera
@@ -132,3 +132,23 @@ Levantar la API:
 ```bash
 npm run dev --workspace=@fve/api
 ```
+
+## Tasa del BCV
+
+El precio se ancla en dólares y se cobra en bolívares a la tasa del BCV, que la
+API mantiene al día sola consultando `bcv.org.ve` cada hora (`BCV_SYNC_MINUTES`
+para cambiarlo, `BCV_SYNC=off` para apagarlo).
+
+Tres reglas de esa sincronización:
+
+1. La tasa se guarda bajo su **fecha valor**, no la de publicación. El BCV
+   publica un día la que regirá el siguiente día bancario.
+2. **Nunca pisa una tasa cargada a mano.** Quien la corrigió sabía algo que el
+   proceso automático no sabe.
+3. Un salto mayor al 50% se rechaza y se avisa, en vez de aplicarse solo. No es
+   desconfianza del BCV: es que un cambio en la forma de su página no meta un
+   número disparatado en cada venta del día.
+
+Si el BCV no responde, el negocio sigue vendiendo con la última tasa conocida.
+Una caja detenida porque un sitio web está caído sería peor que el problema que
+resuelve.

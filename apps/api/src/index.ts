@@ -12,7 +12,12 @@ const port = Number(process.env['PORT'] ?? 3001)
 const host = process.env['HOST'] ?? '127.0.0.1'
 
 const { db, close } = createDatabase({ url })
-const app = buildServer({ db, logger: true })
+const app = buildServer({
+  db,
+  logger: true,
+  syncRates: process.env['BCV_SYNC'] !== 'off',
+  syncMinutes: process.env['BCV_SYNC_MINUTES'] ? Number(process.env['BCV_SYNC_MINUTES']) : undefined,
+})
 
 const shutdown = async (signal: string) => {
   app.log.info(`recibido ${signal}, cerrando`)

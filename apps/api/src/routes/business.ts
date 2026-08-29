@@ -10,6 +10,7 @@ import {
   createCustomer,
   createProduct,
   createSale,
+  fetchBcvRate,
   customerHistory,
   getCashSessionSummary,
   getOpenSession,
@@ -22,6 +23,7 @@ import {
   searchCustomers,
   searchProducts,
   setRate,
+  syncBcvRate,
   toIsoDate,
   updateCustomer,
   updateProduct,
@@ -84,6 +86,24 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     })
 
     return reply.status(201).send({ rate })
+  })
+
+  /**
+   * Trae la tasa del BCV ahora mismo.
+   *
+   * La actualización periódica ya corre sola; esto es para cuando alguien quiere
+   * la tasa nueva sin esperar al siguiente ciclo. Nunca pisa una tasa cargada a
+   * mano para esa fecha.
+   */
+  app.post('/rates/sync', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const quote = await fetchBcvRate()
+    const result = await syncBcvRate(db, {
+      tenantId: ctx.activeTenantId,
+      quote,
+      userId: ctx.userId,
+    })
+    return reply.send(result)
   })
 
   // --- Catálogo -------------------------------------------------------------

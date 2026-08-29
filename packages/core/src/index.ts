@@ -18,6 +18,7 @@
 export * from './errors'
 export * from './rates'
 export * from './sales'
+export * from './bcv'
 export * from './cash'
 export * from './catalog'
 export * from './customers'
