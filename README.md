@@ -12,7 +12,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Esquema de base de datos y aislamiento multi-tenant
 - [x] Autenticación y sesiones revocables
 
-**Fase 1 — Núcleo transaccional.** En curso.
+**Fase 1 — Núcleo transaccional.** Completa.
 
 - [x] Tasa del día con histórico y sincronización automática del BCV
 - [x] Emisión y anulación de ventas
@@ -20,7 +20,7 @@ clientes, gastos y reportes, con manejo bimonetario Bs/USD de primera clase.
 - [x] Catálogo, inventario, clientes y cartera
 - [x] Cierre de caja y arqueo
 - [x] API HTTP
-- [x] Interfaz web: entrada, selección de negocio y punto de venta
+- [x] Interfaz web: venta, catálogo, clientes, caja y panel del operador
 
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
@@ -71,7 +71,7 @@ docs/
   dominio-venezuela.md   Hallazgos de campo sobre el dominio y la competencia
 apps/
   api/                   API HTTP sobre Fastify
-  web/                   Interfaz web: punto de venta
+  web/                   Interfaz web: venta, catálogo, clientes, caja y panel
 packages/
   money/                 Núcleo monetario: Bs/USD, tasa BCV, IVA, IGTF, pagos mixtos
   db/                    Esquema, migraciones y aislamiento entre negocios

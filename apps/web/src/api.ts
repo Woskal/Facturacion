@@ -85,7 +85,7 @@ export interface Membership {
 export interface LoginResponse {
   token: string
   expiresAt: string
-  user: { id: string; fullName: string }
+  user: { id: string; fullName: string; isPlatformAdmin: boolean }
   memberships: Membership[]
 }
 

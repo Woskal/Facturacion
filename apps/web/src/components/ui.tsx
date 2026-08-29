@@ -6,7 +6,7 @@ export function Boton({
   variante = 'normal',
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: 'normal' | 'principal' | 'peligro' | 'plano' }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: 'normal' | 'principal' | 'peligro' | 'plano' | undefined }) {
   const estilos = {
     normal: 'bg-white border-borde hover:bg-papel text-tinta',
     principal: 'bg-acento border-acento text-white hover:opacity-90',
@@ -28,7 +28,7 @@ export function Campo({
   error,
   className = '',
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { etiqueta?: string; ayuda?: string; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { etiqueta?: string | undefined; ayuda?: string | undefined; error?: string | undefined }) {
   return (
     <label className="block">
       {etiqueta ? <span className="mb-1 block text-sm font-medium text-tinta">{etiqueta}</span> : null}
@@ -44,11 +44,11 @@ export function Campo({
   )
 }
 
-export function Tarjeta({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Tarjeta({ children, className = '' }: { children: ReactNode; className?: string | undefined }) {
   return <div className={`rounded-xl border border-borde bg-white ${className}`}>{children}</div>
 }
 
-export function Aviso({ tipo = 'error', children }: { tipo?: 'error' | 'alerta' | 'exito'; children: ReactNode }) {
+export function Aviso({ tipo = 'error', children }: { tipo?: 'error' | 'alerta' | 'exito' | undefined; children: ReactNode }) {
   const estilos = {
     error: 'border-error/30 bg-error/5 text-error',
     alerta: 'border-alerta/30 bg-alerta/5 text-alerta',

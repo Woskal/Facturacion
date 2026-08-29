@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import type { Database } from '@fve/db'
+import { eq } from 'drizzle-orm'
+import { schema, type Database } from '@fve/db'
 import { authenticate, changePassword, listMemberships, revokeSession, selectTenant } from '@fve/auth'
 
 import { requireAuth } from '../http'
@@ -17,6 +18,22 @@ const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(12, 'La contraseña nueva debe tener al menos 12 caracteres.'),
 })
+
+/**
+ * Si la cuenta opera la plataforma.
+ *
+ * La interfaz lo usa solo para decidir si enseña el panel. Cada operación del
+ * panel vuelve a comprobarlo contra la base por su cuenta: lo que diga el
+ * cliente no autoriza nada.
+ */
+async function esOperador(db: Database, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ flag: schema.users.isPlatformAdmin })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1)
+  return rows[0]?.flag ?? false
+}
 
 export function registerAuthRoutes(app: FastifyInstance, db: Database): void {
   /**
@@ -40,7 +57,11 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database): void {
     return reply.send({
       token: result.session.token,
       expiresAt: result.session.expiresAt,
-      user: { id: result.userId, fullName: result.fullName },
+      user: {
+        id: result.userId,
+        fullName: result.fullName,
+        isPlatformAdmin: await esOperador(db, result.userId),
+      },
       memberships: result.memberships,
     })
   })
@@ -49,7 +70,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database): void {
     const ctx = requireAuth(request)
     const memberships = await listMemberships(db, ctx.userId)
     return reply.send({
-      user: { id: ctx.userId },
+      user: { id: ctx.userId, isPlatformAdmin: await esOperador(db, ctx.userId) },
       activeTenantId: ctx.activeTenantId,
       memberships,
     })
