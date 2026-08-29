@@ -3,6 +3,7 @@ import { schema, withTenant, type Database } from '@fve/db'
 import { hashPassword, revokeSessionsForMembership } from '@fve/auth'
 
 import { CoreError } from './errors'
+import type { IdKind } from './customers'
 
 /** Quien intenta la operación no es operador de la plataforma. */
 export class NotPlatformAdminError extends CoreError {
@@ -47,8 +48,6 @@ export async function assertPlatformAdmin(db: Database, userId: string): Promise
     throw new NotPlatformAdminError()
   }
 }
-
-export type IdKind = 'V' | 'E' | 'J' | 'G' | 'P'
 
 export interface CreateTenantInput {
   readonly actorUserId: string
