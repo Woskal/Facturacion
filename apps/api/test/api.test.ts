@@ -581,6 +581,73 @@ describe('caja por HTTP', () => {
   })
 })
 
+describe('cobranza por HTTP', () => {
+  it('el negocio nuevo aparece en prueba', async () => {
+    const negocio = await negocioListo()
+
+    const panel = await app.inject({
+      method: 'GET',
+      url: '/platform/subscriptions',
+      headers: auth(operadorToken),
+    })
+
+    const fila = panel.json().subscriptions.find((s: { tenantId: string }) => s.tenantId === negocio.tenantId)
+    expect(fila.status).toBe('TRIAL')
+    expect(fila.daysLeft).toBe(15)
+  })
+
+  it('LO QUE IMPORTA: registrar un pago extiende el servicio', async () => {
+    const negocio = await negocioListo()
+
+    const pago = await app.inject({
+      method: 'POST',
+      url: `/platform/tenants/${negocio.tenantId}/subscription/payments`,
+      headers: auth(operadorToken),
+      payload: {
+        amount: { currency: 'USD', amount: '1500' },
+        method: 'ZELLE',
+        reference: 'ZL-8891',
+      },
+    })
+
+    expect(pago.statusCode).toBe(201)
+    expect(pago.json().subscription.status).toBe('ACTIVE')
+    expect(pago.json().subscription.daysLeft).toBeGreaterThan(30)
+  })
+
+  it('el negocio ve su propia suscripción pero no la de nadie más', async () => {
+    const negocio = await negocioListo()
+
+    const propia = await app.inject({ method: 'GET', url: '/subscription', headers: auth(negocio.token) })
+    expect(propia.statusCode).toBe(200)
+    expect(propia.json().subscription.status).toBe('TRIAL')
+
+    const ajena = await app.inject({
+      method: 'GET',
+      url: '/platform/subscriptions',
+      headers: auth(negocio.token),
+    })
+    expect(ajena.statusCode).toBe(403)
+  })
+
+  it('se puede cambiar el plan', async () => {
+    const negocio = await negocioListo()
+
+    const cambio = await app.inject({
+      method: 'PATCH',
+      url: `/platform/tenants/${negocio.tenantId}/subscription`,
+      headers: auth(operadorToken),
+      payload: { period: 'ANUAL', priceUsd: { currency: 'USD', amount: '15000' } },
+    })
+
+    expect(cambio.statusCode).toBe(204)
+
+    const propia = await app.inject({ method: 'GET', url: '/subscription', headers: auth(negocio.token) })
+    expect(propia.json().subscription.period).toBe('ANUAL')
+    expect(propia.json().subscription.price).toEqual({ currency: 'USD', amount: '15000' })
+  })
+})
+
 describe('aislamiento por HTTP', () => {
   it('LO QUE IMPORTA: un negocio no ve el catálogo del otro', async () => {
     const uno = await negocioListo('1')

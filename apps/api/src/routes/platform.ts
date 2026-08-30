@@ -3,6 +3,12 @@ import { z } from 'zod'
 import type { Database } from '@fve/db'
 import {
   attachUserToTenant,
+  enforceSubscriptions,
+  getSubscription,
+  listSubscriptionPayments,
+  listSubscriptions,
+  registerSubscriptionPayment,
+  updateSubscription,
   createTenant,
   createUser,
   detachUserFromTenant,
@@ -13,7 +19,7 @@ import {
   suspendTenant,
 } from '@fve/core'
 
-import { requireAuth } from '../http'
+import { moneySchema, requireAuth, requireTenant } from '../http'
 
 const idKindSchema = z.enum(['V', 'E', 'J', 'G', 'P'])
 
@@ -98,6 +104,89 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
     const params = tenantParams.parse(request.params)
     await reactivateTenant(db, { actorUserId: ctx.userId, tenantId: params.tenantId })
     return reply.status(204).send()
+  })
+
+  // --- Cobranza -------------------------------------------------------------
+
+  /** Panel de cobranza: ordenado por lo que vence primero. */
+  app.get('/platform/subscriptions', async (request, reply) => {
+    const ctx = requireAuth(request)
+    return reply.send({ subscriptions: await listSubscriptions(db, ctx.userId) })
+  })
+
+  app.get('/platform/tenants/:tenantId/subscription', async (request, reply) => {
+    const ctx = requireAuth(request)
+    const params = tenantParams.parse(request.params)
+    const [subscription, payments] = await Promise.all([
+      getSubscription(db, params.tenantId),
+      listSubscriptionPayments(db, { tenantId: params.tenantId, actorUserId: ctx.userId }),
+    ])
+    return reply.send({ subscription, payments })
+  })
+
+  /**
+   * Registra un pago y extiende el servicio.
+   *
+   * El pago llega por fuera —pago móvil, Zelle, USDT— y alguien revisa el
+   * comprobante. Por eso la referencia y quién lo dio por bueno quedan
+   * guardados: es lo único que permite reconstruir una cobranza discutida.
+   */
+  app.post('/platform/tenants/:tenantId/subscription/payments', async (request, reply) => {
+    const ctx = requireAuth(request)
+    const params = tenantParams.parse(request.params)
+    const body = z
+      .object({
+        amount: moneySchema,
+        method: z.enum([
+          'EFECTIVO_BS',
+          'EFECTIVO_USD',
+          'PAGO_MOVIL',
+          'TRANSFERENCIA_BS',
+          'PUNTO_VENTA',
+          'ZELLE',
+          'USDT',
+        ]),
+        reference: z.string().optional(),
+        periods: z.number().int().min(1).max(24).optional(),
+      })
+      .parse(request.body)
+
+    const subscription = await registerSubscriptionPayment(db, {
+      tenantId: params.tenantId,
+      actorUserId: ctx.userId,
+      ...body,
+    })
+
+    return reply.status(201).send({ subscription })
+  })
+
+  app.patch('/platform/tenants/:tenantId/subscription', async (request, reply) => {
+    const ctx = requireAuth(request)
+    const params = tenantParams.parse(request.params)
+    const body = z
+      .object({
+        period: z.enum(['MENSUAL', 'SEMESTRAL', 'ANUAL']).optional(),
+        priceUsd: moneySchema.optional(),
+        graceDays: z.number().int().min(0).max(60).optional(),
+        notes: z.string().optional(),
+      })
+      .parse(request.body)
+
+    await updateSubscription(db, { tenantId: params.tenantId, actorUserId: ctx.userId, ...body })
+    return reply.status(204).send()
+  })
+
+  /** Corre el corte a mano. También corre solo una vez al día. */
+  app.post('/platform/subscriptions/enforce', async (request, reply) => {
+    const ctx = requireAuth(request)
+    await listSubscriptions(db, ctx.userId)
+    return reply.send({ result: await enforceSubscriptions(db) })
+  })
+
+  /** Lo que el propio negocio ve de su suscripción. */
+  app.get('/subscription', async (request, reply) => {
+    const ctx = requireTenant(request)
+    return reply.send({ subscription: await getSubscription(db, ctx.activeTenantId) })
   })
 
   app.post('/platform/admins/:userId', async (request, reply) => {

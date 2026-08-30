@@ -11,6 +11,7 @@ import { Catalogo } from './pages/Catalogo'
 import { Clientes } from './pages/Clientes'
 import { ElegirNegocio } from './pages/ElegirNegocio'
 import { Login } from './pages/Login'
+import { Cobranza } from './pages/Cobranza'
 import { Operador } from './pages/Operador'
 import { Reportes } from './pages/Reportes'
 import { Venta } from './pages/Venta'
@@ -21,7 +22,7 @@ type Estado =
   | { fase: 'eligiendo'; memberships: Membership[] }
   | { fase: 'dentro'; negocio: string; tenantId: string }
 
-type Seccion = 'venta' | 'catalogo' | 'clientes' | 'caja' | 'reportes' | 'plataforma'
+type Seccion = 'venta' | 'catalogo' | 'clientes' | 'caja' | 'reportes' | 'plataforma' | 'cobranza'
 
 const SECCIONES: { clave: Seccion; nombre: string }[] = [
   { clave: 'venta', nombre: 'Venta' },
@@ -191,17 +192,20 @@ export function App() {
   }
 
   // Un operador sin negocio abierto ve solo su panel.
-  if (estado.fase === 'eligiendo' && seccion === 'plataforma') {
+  if (estado.fase === 'eligiendo' && (seccion === 'plataforma' || seccion === 'cobranza')) {
     return (
       <Marco
         titulo="Plataforma"
         subtitulo="Panel del operador"
-        pestanas={[]}
+        pestanas={[
+          { clave: 'plataforma', nombre: 'Negocios' },
+          { clave: 'cobranza', nombre: 'Cobranza' },
+        ]}
         seccion={seccion}
         onSeccion={setSeccion}
         onSalir={() => void salir()}
       >
-        <Operador />
+        {seccion === 'cobranza' ? <Cobranza /> : <Operador />}
       </Marco>
     )
   }
@@ -216,7 +220,13 @@ export function App() {
     )
   }
 
-  const pestanas = esOperador ? [...SECCIONES, { clave: 'plataforma' as const, nombre: 'Plataforma' }] : SECCIONES
+  const pestanas = esOperador
+    ? [
+        ...SECCIONES,
+        { clave: 'plataforma' as const, nombre: 'Plataforma' },
+        { clave: 'cobranza' as const, nombre: 'Cobranza' },
+      ]
+    : SECCIONES
 
   return (
     <Marco
@@ -238,6 +248,7 @@ export function App() {
       ) : null}
 
       {seccion === 'plataforma' ? <Operador /> : null}
+      {seccion === 'cobranza' ? <Cobranza /> : null}
 
       {rate && seccion === 'catalogo' ? <Catalogo rate={rate} /> : null}
       {rate && seccion === 'clientes' ? <Clientes rate={rate} /> : null}
@@ -255,7 +266,7 @@ export function App() {
 
       {rate && stationId && seccion === 'caja' ? <Caja stationId={stationId} rate={rate} /> : null}
 
-      {rate && !stationId && seccion !== 'plataforma' && seccion !== 'reportes' ? (
+      {rate && !stationId && seccion !== 'plataforma' && seccion !== 'cobranza' && seccion !== 'reportes' ? (
         <Aviso tipo="alerta">Este negocio no tiene ninguna caja configurada, así que no se puede vender.</Aviso>
       ) : null}
     </Marco>

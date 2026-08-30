@@ -43,6 +43,20 @@ fiscal quedaría a discreción del cliente.
 Ninguna pantalla de negocio se escribe antes de que el núcleo monetario esté
 cubierto por tests. El resto del sistema descansa sobre él.
 
+## Cobro del servicio
+
+Un negocio nuevo arranca con quince días de prueba que empiezan solos. El pago
+se registra a mano —pago móvil, Zelle, USDT, transferencia— porque en Venezuela
+no hay pasarela que cobre sola; queda con su referencia y quién lo dio por
+bueno.
+
+Quien vence entra primero en un período de gracia y solo se suspende si lo pasa.
+El pago es manual y tarda: cortarle el servicio a alguien que ya transfirió pero
+cuyo comprobante nadie revisó es la forma más rápida de perder un cliente.
+
+Suspender no borra nada. Los datos siguen ahí para cuando el cliente se ponga al
+día.
+
 ## Quién es quién
 
 **El operador de la plataforma** —quien vende el servicio— da de alta negocios y

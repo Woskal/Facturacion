@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify'
 import type { Database } from '@fve/db'
-import { syncBcvRateForAllTenants } from '@fve/core'
+import { enforceSubscriptions, syncBcvRateForAllTenants } from '@fve/core'
 
 /**
  * Cada cuánto se consulta al BCV.
@@ -36,6 +36,20 @@ export function startRateSync(options: RateSyncOptions): RateSyncHandle {
   const minutes = options.minutes ?? DEFAULT_SYNC_MINUTES
 
   const runNow = async () => {
+    // El corte por falta de pago viaja con la tasa: los dos son tareas de
+    // fondo que deben correr solas y ninguna debe tumbar el servidor.
+    try {
+      const cobranza = await enforceSubscriptions(options.db)
+      if (cobranza.suspendidos.length > 0 || cobranza.enGracia.length > 0) {
+        options.logger.info(
+          { suspendidos: cobranza.suspendidos.length, enGracia: cobranza.enGracia.length },
+          'suscripciones revisadas',
+        )
+      }
+    } catch (error) {
+      options.logger.warn({ err: error }, 'no se pudo revisar las suscripciones')
+    }
+
     try {
       const result = await syncBcvRateForAllTenants(options.db)
       options.logger.info(
