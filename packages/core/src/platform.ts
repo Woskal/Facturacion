@@ -3,6 +3,7 @@ import { schema, withTenant, type Database } from '@fve/db'
 import { hashPassword, revokeSessionsForMembership } from '@fve/auth'
 
 import { CoreError } from './errors'
+import { PRECIO_MENSUAL_POR_DEFECTO, startSubscription } from './subscriptions'
 import type { IdKind } from './customers'
 
 /** Quien intenta la operación no es operador de la plataforma. */
@@ -109,6 +110,10 @@ export async function createTenant(db: Database, input: CreateTenantInput): Prom
 
   if (!tenant) throw new TenantNotFoundError()
   const tenantId = tenant.id
+
+  // La prueba gratuita empieza sola. Pedirle a alguien que active su propia
+  // prueba es perder clientes en el primer paso.
+  await startSubscription(db, { tenantId, priceUsd: PRECIO_MENSUAL_POR_DEFECTO, now })
 
   return withTenant(db, tenantId, async (tx) => {
     // Alícuotas vigentes. Son datos del negocio, no constantes del código,

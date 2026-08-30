@@ -87,4 +87,21 @@ export const receivableEntryKind = pgEnum('receivable_entry_kind', [
   'WRITE_OFF',
 ])
 
+/**
+ * Estado de la suscripción de un negocio.
+ *
+ * `PAST_DUE` es el período de gracia: venció pero todavía no se corta. El pago
+ * en Venezuela es manual y tarda, y cortarle el servicio a quien ya transfirió
+ * es la forma más rápida de perder un cliente.
+ */
+export const subscriptionStatus = pgEnum('subscription_status', [
+  'TRIAL',
+  'ACTIVE',
+  'PAST_DUE',
+  'SUSPENDED',
+  'CANCELLED',
+])
+
+export const billingPeriod = pgEnum('billing_period', ['MENSUAL', 'SEMESTRAL', 'ANUAL'])
+
 export const auditAction = pgEnum('audit_action', ['CREATE', 'UPDATE', 'ISSUE', 'VOID', 'DELETE', 'LOGIN'])

@@ -30,6 +30,8 @@ export const TENANT_SCOPED_TABLES = [
   'cash_sessions',
   'cash_counts',
   'station_credentials',
+  'subscriptions',
+  'subscription_payments',
   'audit_log',
 ] as const
 
