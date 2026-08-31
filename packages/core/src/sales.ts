@@ -22,10 +22,12 @@ import {
 } from '@fve/money'
 
 import {
+  AlreadyCreditedError,
   CreditRequiresCustomerError,
   DocumentNotFoundError,
   EmptySaleError,
   MissingSeriesError,
+  NotCreditableError,
   NotVoidableError,
   ProductUnavailableError,
   UnsettledSaleError,
@@ -450,6 +452,242 @@ export async function voidSale(
       after: { fullNumber: document.fullNumber, reason: input.reason },
       occurredAt: now,
     })
+  })
+}
+
+export interface CreatedCreditNote {
+  readonly documentId: string
+  readonly fullNumber: string
+}
+
+/**
+ * Emite una nota de crédito por la devolución total de un documento de venta.
+ *
+ * No anula el original —que ya está en manos del cliente— sino que emite un
+ * documento nuevo que lo acredita. Sus importes se guardan en NEGATIVO, copiados
+ * del original a su misma tasa, de modo que los reportes lo restan solos al
+ * sumar: una nota de crédito reduce las ventas y la ganancia del período sin que
+ * el libro tenga que tratarla aparte. Devuelve la mercancía al inventario y, si
+ * el original quedó a crédito, salda su cuenta por cobrar.
+ */
+export async function createCreditNote(
+  db: Database,
+  input: { tenantId: string; documentId: string; userId: string; reason: string; now?: Date | undefined },
+): Promise<CreatedCreditNote> {
+  const now = input.now ?? new Date()
+
+  return withTenant(db, input.tenantId, async (tx) => {
+    const [original] = await tx
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, input.documentId))
+      .limit(1)
+    if (!original) throw new DocumentNotFoundError(input.documentId)
+    if (original.status !== 'ISSUED') {
+      throw new NotCreditableError(`Solo se acredita un documento emitido; este está en ${original.status}.`)
+    }
+    if (original.kind === 'PRESUPUESTO' || original.kind === 'NOTA_CREDITO') {
+      throw new NotCreditableError('Un presupuesto o una nota de crédito no se acreditan.')
+    }
+
+    const yaAcreditado = await tx
+      .select({ id: schema.documents.id })
+      .from(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.relatedDocumentId, input.documentId),
+          eq(schema.documents.kind, 'NOTA_CREDITO'),
+        ),
+      )
+      .limit(1)
+    if (yaAcreditado[0]) throw new AlreadyCreditedError()
+
+    const seriesRows = await tx
+      .select()
+      .from(schema.documentSeries)
+      .where(
+        and(
+          eq(schema.documentSeries.tenantId, input.tenantId),
+          eq(schema.documentSeries.kind, 'NOTA_CREDITO'),
+          eq(schema.documentSeries.isActive, true),
+        ),
+      )
+      .limit(1)
+    const series = seriesRows[0]
+    if (!series) throw new MissingSeriesError('NOTA_CREDITO')
+
+    const assignedRows = await tx.execute<{ assigned: number }>(sql`
+      UPDATE document_series SET next_number = next_number + 1, updated_at = now()
+      WHERE id = ${series.id} RETURNING next_number - 1 AS assigned
+    `)
+    const assigned = Number([...assignedRows][0]?.assigned)
+    const fullNumber = `${series.prefix}-${String(assigned).padStart(6, '0')}`
+
+    const neg = (v: bigint) => -v
+    const origRate: Rate = { bsPerUsd: original.rateBsPerUsd, date: original.rateEffectiveOn, source: 'BCV' }
+
+    const [inserted] = await tx
+      .insert(schema.documents)
+      .values({
+        tenantId: input.tenantId,
+        kind: 'NOTA_CREDITO',
+        seriesId: series.id,
+        number: assigned,
+        fullNumber,
+        stationId: original.stationId,
+        issuedByUserId: input.userId,
+        customerId: original.customerId,
+        relatedDocumentId: original.id,
+        status: 'DRAFT',
+        currency: original.currency,
+        exchangeRateId: original.exchangeRateId,
+        rateBsPerUsd: original.rateBsPerUsd,
+        rateEffectiveOn: original.rateEffectiveOn,
+        grossUsd: neg(original.grossUsd),
+        grossVes: neg(original.grossVes),
+        discountUsd: neg(original.discountUsd),
+        discountVes: neg(original.discountVes),
+        taxableBaseUsd: neg(original.taxableBaseUsd),
+        taxableBaseVes: neg(original.taxableBaseVes),
+        exemptBaseUsd: neg(original.exemptBaseUsd),
+        exemptBaseVes: neg(original.exemptBaseVes),
+        ivaBaseUsd: neg(original.ivaBaseUsd),
+        ivaBaseVes: neg(original.ivaBaseVes),
+        ivaAdicionalUsd: neg(original.ivaAdicionalUsd),
+        ivaAdicionalVes: neg(original.ivaAdicionalVes),
+        totalUsd: neg(original.totalUsd),
+        totalVes: neg(original.totalVes),
+        igtfUsd: neg(original.igtfUsd),
+        igtfVes: neg(original.igtfVes),
+        grandTotalUsd: neg(original.grandTotalUsd),
+        grandTotalVes: neg(original.grandTotalVes),
+        notes: input.reason,
+      })
+      .returning({ id: schema.documents.id })
+    if (!inserted) throw new DocumentNotFoundError(input.documentId)
+    const creditId = inserted.id
+
+    const lines = await tx
+      .select()
+      .from(schema.documentLines)
+      .where(eq(schema.documentLines.documentId, original.id))
+      .orderBy(schema.documentLines.lineNumber)
+    if (lines.length > 0) {
+      await tx.insert(schema.documentLines).values(
+        lines.map((l) => ({
+          tenantId: input.tenantId,
+          documentId: creditId,
+          lineNumber: l.lineNumber,
+          productId: l.productId,
+          sku: l.sku,
+          description: l.description,
+          unit: l.unit,
+          quantity: neg(l.quantity),
+          unitPrice: l.unitPrice,
+          discountBps: l.discountBps,
+          priceMode: l.priceMode,
+          taxRateId: l.taxRateId,
+          taxCode: l.taxCode,
+          taxBaseBps: l.taxBaseBps,
+          taxAdicionalBps: l.taxAdicionalBps,
+          gross: neg(l.gross),
+          discount: neg(l.discount),
+          base: neg(l.base),
+          ivaBase: neg(l.ivaBase),
+          ivaAdicional: neg(l.ivaAdicional),
+          total: neg(l.total),
+        })),
+      )
+    }
+
+    const taxes = await tx
+      .select()
+      .from(schema.documentTaxBreakdown)
+      .where(eq(schema.documentTaxBreakdown.documentId, original.id))
+    if (taxes.length > 0) {
+      await tx.insert(schema.documentTaxBreakdown).values(
+        taxes.map((t) => ({
+          tenantId: input.tenantId,
+          documentId: creditId,
+          taxCode: t.taxCode,
+          baseBps: t.baseBps,
+          adicionalBps: t.adicionalBps,
+          baseUsd: neg(t.baseUsd),
+          baseVes: neg(t.baseVes),
+          ivaBaseUsd: neg(t.ivaBaseUsd),
+          ivaBaseVes: neg(t.ivaBaseVes),
+          ivaAdicionalUsd: neg(t.ivaAdicionalUsd),
+          ivaAdicionalVes: neg(t.ivaAdicionalVes),
+        })),
+      )
+    }
+
+    await tx.update(schema.documents).set({ status: 'ISSUED', issuedAt: now }).where(eq(schema.documents.id, creditId))
+
+    // Devolver la mercancía: por cada movimiento de venta del original, un retorno.
+    const movements = await tx
+      .select()
+      .from(schema.stockMovements)
+      .where(eq(schema.stockMovements.documentId, original.id))
+    const sales = movements.filter((m) => m.kind === 'SALE')
+    if (sales.length > 0) {
+      await tx.insert(schema.stockMovements).values(
+        sales.map((m) => ({
+          tenantId: input.tenantId,
+          productId: m.productId,
+          kind: 'RETURN' as const,
+          quantity: neg(m.quantity), // el de venta era negativo; esto repone
+          documentId: creditId,
+          reason: `Nota de crédito ${fullNumber} de ${original.fullNumber}`,
+          createdByUserId: input.userId,
+          occurredAt: now,
+        })),
+      )
+    }
+
+    // Si el original quedó a crédito y sigue abierto, la nota de crédito lo salda.
+    const [receivable] = await tx
+      .select()
+      .from(schema.receivables)
+      .where(and(eq(schema.receivables.documentId, original.id), isNull(schema.receivables.settledAt)))
+      .limit(1)
+    if (receivable) {
+      const paidRows = await tx.execute<{ paid: string }>(sql`
+        SELECT COALESCE(SUM(CASE WHEN ${receivable.currency} = 'USD' THEN amount_usd ELSE amount_ves END), 0)::text AS paid
+        FROM receivable_entries WHERE receivable_id = ${receivable.id}
+      `)
+      const pending = receivable.originalAmount - BigInt([...paidRows][0]?.paid ?? '0')
+      if (pending > 0n) {
+        const credited = money(receivable.currency, pending)
+        await tx.insert(schema.receivableEntries).values({
+          tenantId: input.tenantId,
+          receivableId: receivable.id,
+          kind: 'CREDIT_NOTE',
+          currency: receivable.currency,
+          amount: pending,
+          amountUsd: convert(credited, 'USD', origRate).amount,
+          amountVes: convert(credited, 'VES', origRate).amount,
+          exchangeRateId: original.exchangeRateId,
+          rateBsPerUsd: original.rateBsPerUsd,
+          reference: fullNumber,
+          occurredAt: now,
+          createdByUserId: input.userId,
+        })
+        await tx.update(schema.receivables).set({ settledAt: now }).where(eq(schema.receivables.id, receivable.id))
+      }
+    }
+
+    await tx.insert(schema.auditLog).values({
+      tenantId: input.tenantId,
+      actorUserId: input.userId,
+      action: 'ISSUE',
+      entity: 'documents',
+      entityId: creditId,
+      after: { fullNumber, relatedTo: original.fullNumber, reason: input.reason },
+      occurredAt: now,
+    })
+
+    return { documentId: creditId, fullNumber }
   })
 }
 

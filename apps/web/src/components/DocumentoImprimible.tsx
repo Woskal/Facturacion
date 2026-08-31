@@ -60,23 +60,25 @@ export function VisorDocumento({
   onAnulado?: (() => void) | undefined
 }) {
   const [formato, setFormato] = useState<'carta' | 'ticket'>(documento.kind === 'FACTURA' ? 'carta' : 'ticket')
-  const [anulando, setAnulando] = useState(false)
+  const [accion, setAccion] = useState<'anular' | 'credito' | null>(null)
   const [razon, setRazon] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const emitido = documento.status === 'ISSUED'
+  const acreditable = emitido && documento.kind !== 'PRESUPUESTO' && documento.kind !== 'NOTA_CREDITO'
 
-  async function anular() {
+  async function confirmar() {
     setEnviando(true)
     setError(null)
+    const ruta = accion === 'credito' ? 'credit-note' : 'void'
     try {
-      await api.post(`/sales/${documento.documentId}/void`, { reason: razon.trim() })
-      setAnulando(false)
+      await api.post(`/sales/${documento.documentId}/${ruta}`, { reason: razon.trim() })
+      setAccion(null)
       onAnulado?.()
       onCerrar()
     } catch (fallo) {
-      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo anular el documento.')
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo completar la operación.')
     } finally {
       setEnviando(false)
     }
@@ -102,8 +104,13 @@ export function VisorDocumento({
               { valor: 'ticket', nombre: 'Ticket' },
             ]}
           />
+          {onAnulado && acreditable ? (
+            <Boton variante="normal" onClick={() => { setRazon(''); setError(null); setAccion('credito') }}>
+              Nota de crédito
+            </Boton>
+          ) : null}
           {onAnulado && emitido ? (
-            <Boton variante="peligro" onClick={() => setAnulando(true)}>
+            <Boton variante="peligro" onClick={() => { setRazon(''); setError(null); setAccion('anular') }}>
               Anular
             </Boton>
           ) : null}
@@ -120,31 +127,40 @@ export function VisorDocumento({
         {formato === 'carta' ? <Carta d={documento} /> : <Ticket d={documento} />}
       </div>
 
-      {anulando ? (
+      {accion ? (
         <Modal
-          titulo="Anular documento"
+          titulo={accion === 'credito' ? 'Emitir nota de crédito' : 'Anular documento'}
           descripcion={`${TITULOS[documento.kind]} ${documento.fullNumber}`}
-          onCerrar={() => setAnulando(false)}
+          onCerrar={() => setAccion(null)}
         >
           <div className="space-y-3">
             <p className="text-sm text-apagado">
-              Anular conserva el documento y su número, pero lo deja en cero en el libro. No se borra y no se
-              puede deshacer.
+              {accion === 'credito'
+                ? 'Emite un documento nuevo que acredita la devolución: repone el inventario, resta de las ventas del período y salda la cuenta si quedó a crédito. El original se conserva.'
+                : 'Anular conserva el documento y su número, pero lo deja en cero en el libro. No se borra y no se puede deshacer.'}
             </p>
             <Campo
-              etiqueta="Motivo de la anulación"
+              etiqueta="Motivo"
               value={razon}
               onChange={(e) => setRazon(e.target.value)}
-              placeholder="Error en la venta, devolución…"
+              placeholder={accion === 'credito' ? 'Devolución del cliente…' : 'Error en la venta…'}
               autoFocus
             />
             {error ? <Aviso>{error}</Aviso> : null}
             <div className="flex justify-end gap-2 pt-1">
-              <Boton variante="plano" onClick={() => setAnulando(false)}>
+              <Boton variante="plano" onClick={() => setAccion(null)}>
                 Cancelar
               </Boton>
-              <Boton variante="peligro" disabled={enviando || razon.trim() === ''} onClick={() => void anular()}>
-                {enviando ? 'Anulando…' : 'Anular documento'}
+              <Boton
+                variante={accion === 'credito' ? 'principal' : 'peligro'}
+                disabled={enviando || razon.trim() === ''}
+                onClick={() => void confirmar()}
+              >
+                {enviando
+                  ? 'Emitiendo…'
+                  : accion === 'credito'
+                    ? 'Emitir nota de crédito'
+                    : 'Anular documento'}
               </Boton>
             </div>
           </div>

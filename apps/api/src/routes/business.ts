@@ -9,6 +9,7 @@ import {
   archiveSupplier,
   closeCashSession,
   createCustomer,
+  createCreditNote,
   createExpense,
   createProduct,
   createPurchase,
@@ -575,6 +576,22 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     })
 
     return reply.status(204).send()
+  })
+
+  /** Emite una nota de crédito por la devolución total de un documento. */
+  app.post('/sales/:documentId/credit-note', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ documentId: z.string().uuid() }).parse(request.params)
+    const body = z.object({ reason: z.string().min(1) }).parse(request.body)
+
+    const credito = await createCreditNote(db, {
+      tenantId: ctx.activeTenantId,
+      documentId: params.documentId,
+      userId: ctx.userId,
+      reason: body.reason,
+    })
+
+    return reply.status(201).send(credito)
   })
 
   // --- Documentos emitidos --------------------------------------------------

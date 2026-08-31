@@ -65,3 +65,19 @@ export class NotVoidableError extends CoreError {
     super(`Solo se puede anular un documento emitido; este está en ${status}.`)
   }
 }
+
+/** Se intentó acreditar un documento que no admite nota de crédito. */
+export class NotCreditableError extends CoreError {
+  override readonly name = 'NotCreditableError'
+  constructor(readonly reason: string) {
+    super(reason)
+  }
+}
+
+/** El documento ya tiene una nota de crédito emitida. */
+export class AlreadyCreditedError extends CoreError {
+  override readonly name = 'AlreadyCreditedError'
+  constructor() {
+    super('Este documento ya tiene una nota de crédito.')
+  }
+}
