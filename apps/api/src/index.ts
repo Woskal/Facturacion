@@ -1,6 +1,26 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+
 import { createDatabase } from '@fve/db'
 
 import { buildServer } from './server'
+
+/**
+ * Carga `apps/api/.env` si existe, sin depender de un paquete externo.
+ *
+ * Solo rellena variables que no vengan ya del entorno, así que lo que se pase
+ * por línea de comandos o en producción siempre manda sobre el archivo.
+ */
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), '../.env')
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const match = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)
+    if (match?.[1] && process.env[match[1]] === undefined) {
+      process.env[match[1]] = (match[2] ?? '').replace(/^["']|["']$/g, '')
+    }
+  }
+}
 
 const url = process.env['DATABASE_URL']
 if (!url) {

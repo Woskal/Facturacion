@@ -15,6 +15,12 @@ if (existsSync(envPath)) {
   }
 }
 
+// Los tests corren contra una base SEPARADA para no tocar los datos de
+// desarrollo: `npm test` trunca lo que haya. Si existe TEST_DATABASE_URL, manda.
+if (process.env['TEST_DATABASE_URL']) {
+  process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL']
+}
+
 export default defineConfig({
   test: {
     globals: true,

@@ -135,6 +135,30 @@ psql -U postgres -c "CREATE ROLE fve_app LOGIN PASSWORD 'fve_dev' NOSUPERUSER NO
 npm run migrate --workspace=@fve/db
 ```
 
+Los tests hablan con una base **separada** para no tocar los datos de desarrollo:
+correr `npm test` sobre la base de desarrollo la truncaría. Cree la base de
+pruebas, migre ambas y déjela declarada en `packages/db/.env` como
+`TEST_DATABASE_URL`; los tests la toman de ahí.
+
+```bash
+psql -U postgres -c "CREATE DATABASE fve_test OWNER fve_app"
+```
+
+```bash
+DATABASE_URL=postgres://fve_app:fve_dev@localhost:5432/fve_test npm run migrate --workspace=@fve/db
+```
+
+La API lee su configuración de `apps/api/.env` (copie `apps/api/.env.example`).
+Para tener un negocio de ejemplo con el que recorrer la aplicación —productos, un
+proveedor con su compra, un talonario cargado y unas ventas, incluida una factura
+con número de control— siembre la demo (VACÍA la base que apunte `DATABASE_URL`):
+
+```bash
+npm run seed-demo --workspace=@fve/core
+```
+
+Entra con `cajero@demo.ve` / `clavecajero12`.
+
 ## Reglas que no se negocian
 
 1. Todo monto es `bigint` en unidades menores. Nunca `number`, nunca float.
