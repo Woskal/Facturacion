@@ -243,6 +243,25 @@ export interface FullDocumentJson {
   issuedBy: string
 }
 
+export interface ProfitRowJson {
+  productId: string | null
+  sku: string | null
+  name: string
+  quantity: string
+  revenue: MoneyJson
+  cost: MoneyJson
+  profit: MoneyJson
+  hasCost: boolean
+}
+
+export interface ProfitReportJson {
+  from: string
+  to: string
+  rows: ProfitRowJson[]
+  totals: { revenue: MoneyJson; cost: MoneyJson; profit: MoneyJson }
+  marginBps: number
+}
+
 export interface SupplierJson {
   supplierId: string
   id: string

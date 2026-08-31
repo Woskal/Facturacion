@@ -295,6 +295,136 @@ export async function topProducts(
   }))
 }
 
+export interface ProfitRow {
+  readonly productId: string | null
+  readonly sku: string | null
+  readonly name: string
+  /** Cantidad vendida en milésimas. */
+  readonly quantity: bigint
+  readonly revenue: Money
+  readonly cost: Money
+  readonly profit: Money
+  /** Falso si el producto no tiene compras registradas: su costo se desconoce. */
+  readonly hasCost: boolean
+}
+
+export interface ProfitReport {
+  readonly from: IsoDate
+  readonly to: IsoDate
+  readonly rows: readonly ProfitRow[]
+  readonly totals: { readonly revenue: Money; readonly cost: Money; readonly profit: Money }
+  /** Margen sobre la venta en puntos básicos: 2500 = 25%. */
+  readonly marginBps: number
+}
+
+/**
+ * Ganancia por producto del período.
+ *
+ * Ganancia bruta = lo que se vendió menos lo que costó la mercancía vendida.
+ * Todo en bolívares y con tasas históricas: el ingreso sale del documento a la
+ * tasa con que se emitió, y el costo del promedio ponderado de las compras, cada
+ * una a la tasa con que se registró. Nada se recalcula con la tasa de hoy.
+ *
+ * El costo es un promedio ponderado sobre TODAS las compras del producto, no solo
+ * las del período: la mercancía vendida hoy pudo comprarse el mes pasado. Un
+ * producto vendido sin ninguna compra registrada aparece con costo cero y
+ * marcado, para que un margen inflado se lea como «falta cargar la compra» y no
+ * como ganancia real.
+ */
+export async function profitReport(
+  db: Database,
+  input: { tenantId: string; from: IsoDate; to: IsoDate; limit?: number | undefined },
+): Promise<ProfitReport> {
+  return withTenant(db, input.tenantId, async (tx) => {
+    // Ventas por producto en el período, en bolívares a la tasa de cada documento.
+    const ventas = await tx.execute<{
+      product_id: string | null
+      sku: string | null
+      description: string
+      cantidad: string
+      ingreso: string
+    }>(sql`
+      SELECT l.product_id, MAX(l.sku) AS sku, MAX(l.description) AS description,
+             COALESCE(SUM(l.quantity), 0)::text AS cantidad,
+             COALESCE(SUM(
+               CASE WHEN d.currency = 'VES' THEN l.total
+                    ELSE (l.total * d.rate_bs_per_usd) / 100000000
+               END
+             ), 0)::text AS ingreso
+      FROM document_lines l
+      JOIN documents d ON d.id = l.document_id
+      WHERE d.status = 'ISSUED'
+        AND d.issued_at IS NOT NULL
+        AND (d.issued_at AT TIME ZONE 'America/Caracas')::date BETWEEN ${input.from}::date AND ${input.to}::date
+      GROUP BY l.product_id
+    `)
+
+    // Costo promedio ponderado por producto, sobre TODAS sus compras, en bolívares
+    // a la tasa de cada compra. Se devuelve el costo total y la cantidad comprada
+    // para prorratear luego solo lo vendido.
+    const costos = await tx.execute<{ product_id: string; comprado: string; costo_ves: string }>(sql`
+      SELECT pl.product_id,
+             SUM(pl.quantity)::text AS comprado,
+             SUM(
+               CASE WHEN p.currency = 'VES' THEN pl.line_total
+                    ELSE (pl.line_total * p.rate_bs_per_usd) / 100000000
+               END
+             )::text AS costo_ves
+      FROM purchase_lines pl
+      JOIN purchases p ON p.id = pl.purchase_id
+      WHERE pl.product_id IS NOT NULL
+      GROUP BY pl.product_id
+    `)
+
+    const costoPorProducto = new Map<string, { comprado: bigint; costoVes: bigint }>()
+    for (const row of costos) {
+      costoPorProducto.set(row.product_id, {
+        comprado: BigInt(row.comprado),
+        costoVes: BigInt(row.costo_ves),
+      })
+    }
+
+    const filas: ProfitRow[] = [...ventas].map((row) => {
+      const cantidad = BigInt(row.cantidad)
+      const ingreso = BigInt(row.ingreso)
+      const costoInfo = row.product_id ? costoPorProducto.get(row.product_id) : undefined
+
+      // Costo de lo vendido = costo total × (vendido / comprado), redondeado.
+      let costo = 0n
+      const hasCost = !!costoInfo && costoInfo.comprado > 0n
+      if (hasCost && costoInfo) {
+        costo = (costoInfo.costoVes * cantidad + costoInfo.comprado / 2n) / costoInfo.comprado
+      }
+
+      return {
+        productId: row.product_id,
+        sku: row.sku,
+        name: row.description,
+        quantity: cantidad,
+        revenue: money('VES', ingreso),
+        cost: money('VES', costo),
+        profit: money('VES', ingreso - costo),
+        hasCost,
+      }
+    })
+
+    filas.sort((a, b) => (b.profit.amount > a.profit.amount ? 1 : b.profit.amount < a.profit.amount ? -1 : 0))
+    const limitadas = input.limit ? filas.slice(0, input.limit) : filas
+
+    const revenue = filas.reduce((acc, f) => acc + f.revenue.amount, 0n)
+    const cost = filas.reduce((acc, f) => acc + f.cost.amount, 0n)
+    const profit = revenue - cost
+
+    return {
+      from: input.from,
+      to: input.to,
+      rows: limitadas,
+      totals: { revenue: money('VES', revenue), cost: money('VES', cost), profit: money('VES', profit) },
+      marginBps: revenue > 0n ? Number((profit * 10000n) / revenue) : 0,
+    }
+  })
+}
+
 /**
  * Libro de ventas en CSV, listo para abrir en una hoja de cálculo.
  *

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { formatMoney, money, type Money } from '@fve/money'
 
-import { ApiError, api, getToken, toMoney, type MoneyJson } from '../api'
+import { ApiError, api, getToken, toMoney, type MoneyJson, type ProfitReportJson } from '../api'
 import { cantidad } from '../formato'
 import { Aviso, Boton, CabeceraTarjeta, Campo, Encabezado, Insignia, Tarjeta, Vacio } from '../components/ui'
 
@@ -80,6 +80,7 @@ export function Reportes() {
   const [dias, setDias] = useState<Dia[]>([])
   const [medios, setMedios] = useState<Medio[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
+  const [ganancia, setGanancia] = useState<ProfitReportJson | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
 
@@ -88,16 +89,18 @@ export function Reportes() {
     const rango = `from=${desde}&to=${hasta}`
 
     try {
-      const [l, d, m, p] = await Promise.all([
+      const [l, d, m, p, g] = await Promise.all([
         api.get<{ book: Libro }>(`/reports/sales-book?${rango}`),
         api.get<{ days: Dia[] }>(`/reports/daily-sales?${rango}`),
         api.get<{ methods: Medio[] }>(`/reports/by-method?${rango}`),
         api.get<{ products: Producto[] }>(`/reports/top-products?${rango}&limit=10`),
+        api.get<{ report: ProfitReportJson }>(`/reports/profit?${rango}&limit=10`),
       ])
       setLibro(l.book)
       setDias(d.days)
       setMedios(m.methods)
       setProductos(p.products)
+      setGanancia(g.report)
       setError(null)
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar los reportes.')
@@ -159,8 +162,18 @@ export function Reportes() {
 
       {error ? <Aviso>{error}</Aviso> : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Resumen titulo="Vendido" valor={formatMoney(totalPeriodo)} />
+        <Resumen
+          titulo="Ganancia"
+          valor={ganancia ? formatMoney(toMoney(ganancia.totals.profit)) : '—'}
+          detalle={ganancia ? `${(ganancia.marginBps / 100).toFixed(1)}% margen` : undefined}
+          tono="exito"
+        />
+        <Resumen
+          titulo="Costo vendido"
+          valor={ganancia ? formatMoney(toMoney(ganancia.totals.cost)) : '—'}
+        />
         <Resumen titulo="Documentos" valor={String(documentos)} />
         <Resumen
           titulo="Base gravada"
@@ -225,6 +238,58 @@ export function Reportes() {
           </div>
         </Tarjeta>
       </div>
+
+      <Tarjeta className="overflow-hidden">
+        <CabeceraTarjeta>Ganancia por producto</CabeceraTarjeta>
+        <div className="overflow-x-auto">
+          {!ganancia || ganancia.rows.length === 0 ? (
+            <Vacio>Sin ventas en el período.</Vacio>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b border-borde text-xs uppercase tracking-wide text-apagado">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Producto</th>
+                  <th className="w-24 px-2 py-2 text-right font-medium">Vendido</th>
+                  <th className="w-28 px-2 py-2 text-right font-medium">Ingreso</th>
+                  <th className="w-28 px-2 py-2 text-right font-medium">Costo</th>
+                  <th className="w-28 px-2 py-2 text-right font-medium">Ganancia</th>
+                  <th className="w-20 px-4 py-2 text-right font-medium">Margen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ganancia.rows.map((fila, indice) => {
+                  const ingreso = toMoney(fila.revenue)
+                  const gananciaFila = toMoney(fila.profit)
+                  const margen = ingreso.amount > 0n ? Number((gananciaFila.amount * 1000n) / ingreso.amount) / 10 : 0
+                  return (
+                    <tr key={fila.productId ?? indice} className="border-b border-borde/60 last:border-0">
+                      <td className="px-4 py-2">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-tinta">{fila.name}</span>
+                          {!fila.hasCost ? <Insignia tono="alerta">sin costo</Insignia> : null}
+                        </span>
+                      </td>
+                      <td className="cifra px-2 py-2 text-right text-apagado">{cantidad(BigInt(fila.quantity))}</td>
+                      <td className="cifra px-2 py-2 text-right">{formatMoney(ingreso, { symbol: false })}</td>
+                      <td className="cifra px-2 py-2 text-right text-apagado">
+                        {formatMoney(toMoney(fila.cost), { symbol: false })}
+                      </td>
+                      <td className={`cifra px-2 py-2 text-right font-medium ${gananciaFila.amount < 0n ? 'text-error' : 'text-exito'}`}>
+                        {formatMoney(gananciaFila, { symbol: false })}
+                      </td>
+                      <td className="cifra px-4 py-2 text-right text-apagado">{fila.hasCost ? `${margen.toFixed(0)}%` : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <p className="border-t border-borde px-4 py-2 text-xs text-apagado">
+          Ganancia bruta en bolívares: ingreso a la tasa de cada venta menos el costo promedio de las compras. «Sin
+          costo» marca productos vendidos sin ninguna compra cargada.
+        </p>
+      </Tarjeta>
 
       <Tarjeta className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <CabeceraTarjeta>Libro de ventas</CabeceraTarjeta>
@@ -308,11 +373,28 @@ export function Reportes() {
   )
 }
 
-function Resumen({ titulo, valor }: { titulo: string; valor: string }) {
+function Resumen({
+  titulo,
+  valor,
+  detalle,
+  tono,
+}: {
+  titulo: string
+  valor: string
+  detalle?: string | undefined
+  tono?: 'exito' | undefined
+}) {
   return (
     <Tarjeta className="px-4 py-3.5">
       <span className="block text-xs font-medium uppercase tracking-wide text-apagado">{titulo}</span>
-      <span className="cifra mt-1.5 block text-xl font-semibold text-tinta">{valor}</span>
+      <span className={`cifra mt-1.5 block text-xl font-semibold ${tono === 'exito' ? 'text-exito' : 'text-tinta'}`}>
+        {valor}
+      </span>
+      {detalle ? (
+        <span className="mt-1 inline-block">
+          <Insignia tono={tono ?? 'neutro'}>{detalle}</Insignia>
+        </span>
+      ) : null}
     </Tarjeta>
   )
 }

@@ -25,6 +25,7 @@ import {
   listControlBooks,
   listPurchases,
   listRates,
+  profitReport,
   listReceivables,
   listNumberBlocks,
   listStations,
@@ -216,6 +217,16 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     const query = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }).parse(request.query)
     return reply.send({
       products: await topProducts(db, { tenantId: ctx.activeTenantId, ...rango, limit: query.limit }),
+    })
+  })
+
+  /** Ganancia del período: ventas menos costo de la mercancía vendida. */
+  app.get('/reports/profit', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    const query = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }).parse(request.query)
+    return reply.send({
+      report: await profitReport(db, { tenantId: ctx.activeTenantId, ...rango, limit: query.limit }),
     })
   })
 
