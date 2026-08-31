@@ -3,7 +3,18 @@ import { convert, formatMoney, type Money, type Rate } from '@fve/money'
 
 import { ApiError, api, fromMoney, toMoney, type CustomerJson, type MoneyJson } from '../api'
 import { aMonto } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import {
+  Aviso,
+  Boton,
+  CabeceraTarjeta,
+  Campo,
+  Encabezado,
+  Insignia,
+  Modal,
+  Select,
+  Tarjeta,
+  Vacio,
+} from '../components/ui'
 
 interface ReceivableJson {
   receivableId: string
@@ -60,94 +71,91 @@ export function Clientes({ rate }: { rate: Rate }) {
   }, null)
 
   return (
-    <div className="mx-auto grid h-full max-w-5xl grid-rows-[auto_1fr_auto] gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-64 flex-1">
-          <Campo
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre o cédula…"
-          />
-        </div>
+    <div className="mx-auto grid h-full max-w-5xl grid-rows-[auto_auto_1fr_auto] gap-4">
+      <Encabezado titulo="Clientes" subtitulo="Directorio y cuentas por cobrar">
         <Boton variante="principal" onClick={() => setCreando(true)}>
           Nuevo cliente
         </Boton>
-      </div>
+      </Encabezado>
+
+      <Campo
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar por nombre o cédula…"
+      />
 
       {error ? <Aviso>{error}</Aviso> : null}
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <Tarjeta className="min-h-0 overflow-auto">
-          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
-            Clientes
-          </h2>
-          {clientes.length === 0 ? (
-            <Vacio>Ningún cliente coincide.</Vacio>
-          ) : (
-            <ul>
-              {clientes.map((cliente) => (
-                <li
-                  key={cliente.customerId}
-                  className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2 text-sm last:border-0"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{cliente.name}</span>
-                    <span className="block text-xs text-apagado">
-                      {cliente.id}
-                      {cliente.phone ? ` · ${cliente.phone}` : ''}
-                      {cliente.specialTaxpayer ? ' · contribuyente especial' : ''}
+        <Tarjeta className="flex min-h-0 flex-col overflow-hidden">
+          <CabeceraTarjeta>Clientes</CabeceraTarjeta>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {clientes.length === 0 ? (
+              <Vacio>Ningún cliente coincide.</Vacio>
+            ) : (
+              <ul>
+                {clientes.map((cliente) => (
+                  <li
+                    key={cliente.customerId}
+                    className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2.5 text-sm transition last:border-0 hover:bg-tenue/50"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-tinta">{cliente.name}</span>
+                      <span className="cifra block text-xs text-apagado">
+                        {cliente.id}
+                        {cliente.phone ? ` · ${cliente.phone}` : ''}
+                        {cliente.specialTaxpayer ? ' · contribuyente especial' : ''}
+                      </span>
                     </span>
-                  </span>
-                  {cliente.openReceivables > 0 ? (
-                    <span className="shrink-0 rounded-full bg-alerta/10 px-2 py-0.5 text-xs text-alerta">
-                      {cliente.openReceivables} por cobrar
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+                    {cliente.openReceivables > 0 ? (
+                      <Insignia tono="alerta">{cliente.openReceivables} por cobrar</Insignia>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Tarjeta>
 
-        <Tarjeta className="min-h-0 overflow-auto">
-          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
-            Por cobrar
-          </h2>
-          {cartera.length === 0 ? (
-            <Vacio>No hay nada pendiente de cobro.</Vacio>
-          ) : (
-            <ul>
-              {cartera.map((fila) => (
-                <li
-                  key={fila.receivableId}
-                  className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2 text-sm last:border-0"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{fila.customerName}</span>
-                    <span className="block text-xs text-apagado">{fila.fullNumber}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <span className="cifra text-right">
-                      <span className="block font-medium">
-                        {formatMoney(convert(toMoney(fila.balance), 'VES', rate))}
-                      </span>
-                      <span className="block text-xs text-apagado">{formatMoney(toMoney(fila.balance))}</span>
+        <Tarjeta className="flex min-h-0 flex-col overflow-hidden">
+          <CabeceraTarjeta>Por cobrar</CabeceraTarjeta>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {cartera.length === 0 ? (
+              <Vacio>No hay nada pendiente de cobro.</Vacio>
+            ) : (
+              <ul>
+                {cartera.map((fila) => (
+                  <li
+                    key={fila.receivableId}
+                    className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2.5 text-sm transition last:border-0 hover:bg-tenue/50"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-tinta">{fila.customerName}</span>
+                      <span className="cifra block text-xs text-apagado">{fila.fullNumber}</span>
                     </span>
-                    <Boton variante="plano" onClick={() => setAbonando(fila)}>
-                      Abonar
-                    </Boton>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <span className="flex shrink-0 items-center gap-3">
+                      <span className="cifra text-right">
+                        <span className="block font-medium text-tinta">
+                          {formatMoney(convert(toMoney(fila.balance), 'VES', rate))}
+                        </span>
+                        <span className="block text-xs text-apagado">{formatMoney(toMoney(fila.balance))}</span>
+                      </span>
+                      <Boton variante="suave" tamano="sm" onClick={() => setAbonando(fila)}>
+                        Abonar
+                      </Boton>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Tarjeta>
       </div>
 
       {totalPorCobrar ? (
         <Tarjeta className="flex items-center justify-between px-4 py-3">
           <span className="text-sm text-apagado">Total por cobrar</span>
-          <span className="cifra text-lg font-semibold">{formatMoney(totalPorCobrar)}</span>
+          <span className="cifra text-lg font-semibold text-tinta">{formatMoney(totalPorCobrar)}</span>
         </Tarjeta>
       ) : null}
 
@@ -172,17 +180,6 @@ export function Clientes({ rate }: { rate: Rate }) {
           }}
         />
       ) : null}
-    </div>
-  )
-}
-
-function Modal({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-tinta/30 p-6">
-      <Tarjeta className="w-full max-w-md p-5">
-        <h2 className="mb-4 text-lg font-semibold">{titulo}</h2>
-        {children}
-      </Tarjeta>
     </div>
   )
 }
@@ -216,25 +213,22 @@ function NuevoCliente({ onCerrar, onCreado }: { onCerrar: () => void; onCreado: 
   }
 
   return (
-    <Modal titulo="Nuevo cliente">
+    <Modal titulo="Nuevo cliente" onCerrar={onCerrar}>
       <div className="space-y-3">
         <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
 
-        <div className="grid grid-cols-[80px_1fr] gap-3">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">Tipo</span>
-            <select
-              value={idKind}
-              onChange={(e) => setIdKind(e.target.value as typeof idKind)}
-              className="w-full rounded-lg border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-acento"
-            >
-              {(['V', 'E', 'J', 'G', 'P'] as const).map((letra) => (
-                <option key={letra} value={letra}>
-                  {letra}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="grid grid-cols-[90px_1fr] gap-3">
+          <Select
+            etiqueta="Tipo"
+            value={idKind}
+            onChange={(e) => setIdKind(e.target.value as typeof idKind)}
+          >
+            {(['V', 'E', 'J', 'G', 'P'] as const).map((letra) => (
+              <option key={letra} value={letra}>
+                {letra}
+              </option>
+            ))}
+          </Select>
           <Campo
             etiqueta="Cédula o RIF"
             value={idNumber}
@@ -325,8 +319,8 @@ function Abonar({
   }
 
   return (
-    <Modal titulo={`Abonar a ${fila.customerName}`}>
-      <div className="mb-4 flex items-baseline justify-between rounded-lg bg-papel px-3 py-2">
+    <Modal titulo="Registrar abono" descripcion={fila.customerName} onCerrar={onCerrar}>
+      <div className="mb-4 flex items-baseline justify-between rounded-lg bg-tenue px-3 py-2">
         <span className="text-sm text-apagado">Saldo de {fila.fullNumber}</span>
         <span className="cifra text-right">
           <span className="block font-medium">{formatMoney(convert(saldo, 'VES', rate))}</span>
@@ -352,17 +346,10 @@ function Abonar({
         </div>
 
         <div className="grid grid-cols-[90px_1fr] gap-3">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">Moneda</span>
-            <select
-              value={moneda}
-              onChange={(e) => setMoneda(e.target.value as 'VES' | 'USD')}
-              className="w-full rounded-lg border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-acento"
-            >
-              <option value="VES">Bs</option>
-              <option value="USD">$</option>
-            </select>
-          </label>
+          <Select etiqueta="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value as 'VES' | 'USD')}>
+            <option value="VES">Bs</option>
+            <option value="USD">$</option>
+          </Select>
           <Campo
             etiqueta="Monto"
             value={texto}

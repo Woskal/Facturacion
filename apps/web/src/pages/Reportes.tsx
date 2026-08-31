@@ -3,7 +3,7 @@ import { formatMoney, money, type Money } from '@fve/money'
 
 import { ApiError, api, getToken, toMoney, type MoneyJson } from '../api'
 import { cantidad } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, CabeceraTarjeta, Campo, Encabezado, Insignia, Tarjeta, Vacio } from '../components/ui'
 
 interface FilaLibro {
   date: string
@@ -143,15 +143,17 @@ export function Reportes() {
 
   return (
     <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <Campo etiqueta="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-        <Campo etiqueta="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-        <Boton onClick={() => void cargar()} disabled={cargando}>
-          {cargando ? 'Cargando…' : 'Actualizar'}
-        </Boton>
-        <div className="flex-1" />
+      <Encabezado titulo="Reportes" subtitulo="Ventas, medios de pago y libro fiscal del período">
         <Boton variante="principal" onClick={() => void descargar()} disabled={!libro || libro.rows.length === 0}>
           Descargar libro de ventas
+        </Boton>
+      </Encabezado>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <Campo etiqueta="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="cifra" />
+        <Campo etiqueta="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="cifra" />
+        <Boton onClick={() => void cargar()} disabled={cargando}>
+          {cargando ? 'Cargando…' : 'Actualizar'}
         </Boton>
       </div>
 
@@ -168,66 +170,70 @@ export function Reportes() {
       </div>
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <Tarjeta className="min-h-0 overflow-auto">
-          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
-            Cobrado por medio de pago
-          </h2>
-          {medios.length === 0 ? (
-            <Vacio>Sin cobros en el período.</Vacio>
-          ) : (
-            <ul>
-              {medios.map((medio) => (
-                <li
-                  key={`${medio.method}-${medio.currency}`}
-                  className="flex items-center justify-between border-b border-borde/60 px-4 py-2 text-sm last:border-0"
-                >
-                  <span>
-                    {NOMBRES[medio.method] ?? medio.method}
-                    <span className="ml-2 text-xs text-apagado">{medio.count}×</span>
-                  </span>
-                  <span className="cifra font-medium">{formatMoney(toMoney(medio.received))}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <Tarjeta className="flex min-h-0 flex-col overflow-hidden">
+          <CabeceraTarjeta>Cobrado por medio de pago</CabeceraTarjeta>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {medios.length === 0 ? (
+              <Vacio>Sin cobros en el período.</Vacio>
+            ) : (
+              <ul>
+                {medios.map((medio) => (
+                  <li
+                    key={`${medio.method}-${medio.currency}`}
+                    className="flex items-center justify-between border-b border-borde/60 px-4 py-2.5 text-sm last:border-0"
+                  >
+                    <span className="text-tinta">
+                      {NOMBRES[medio.method] ?? medio.method}
+                      <span className="ml-2 text-xs text-apagado">{medio.count}×</span>
+                    </span>
+                    <span className="cifra font-medium text-tinta">{formatMoney(toMoney(medio.received))}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Tarjeta>
 
-        <Tarjeta className="min-h-0 overflow-auto">
-          <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
-            Lo más vendido
-          </h2>
-          {productos.length === 0 ? (
-            <Vacio>Sin ventas en el período.</Vacio>
-          ) : (
-            <ul>
-              {productos.map((producto, indice) => (
-                <li
-                  key={producto.productId ?? indice}
-                  className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2 text-sm last:border-0"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{producto.name}</span>
-                    <span className="cifra block text-xs text-apagado">
-                      {cantidad(BigInt(producto.quantity))} vendidos
+        <Tarjeta className="flex min-h-0 flex-col overflow-hidden">
+          <CabeceraTarjeta>Lo más vendido</CabeceraTarjeta>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {productos.length === 0 ? (
+              <Vacio>Sin ventas en el período.</Vacio>
+            ) : (
+              <ul>
+                {productos.map((producto, indice) => (
+                  <li
+                    key={producto.productId ?? indice}
+                    className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2.5 text-sm last:border-0"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="cifra flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-tenue text-xs font-semibold text-apagado">
+                        {indice + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-tinta">{producto.name}</span>
+                        <span className="cifra block text-xs text-apagado">
+                          {cantidad(BigInt(producto.quantity))} vendidos
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                  <span className="cifra shrink-0 font-medium">{formatMoney(toMoney(producto.totalVes))}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <span className="cifra shrink-0 font-medium text-tinta">{formatMoney(toMoney(producto.totalVes))}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Tarjeta>
       </div>
 
-      <Tarjeta className="min-h-0 flex-1 overflow-auto">
-        <h2 className="sticky top-0 border-b border-borde bg-white px-4 py-2 text-xs font-medium text-apagado">
-          Libro de ventas
-        </h2>
+      <Tarjeta className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CabeceraTarjeta>Libro de ventas</CabeceraTarjeta>
+        <div className="min-h-0 flex-1 overflow-auto">
         {!libro || libro.rows.length === 0 ? (
           <Vacio>No hay documentos emitidos en el período.</Vacio>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-borde text-xs text-apagado">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Fecha</th>
                 <th className="px-2 py-2 text-left font-medium">Documento</th>
@@ -247,8 +253,10 @@ export function Reportes() {
                 >
                   <td className="cifra px-3 py-1.5">{fila.date}</td>
                   <td className="cifra px-2 py-1.5">
-                    {fila.fullNumber}
-                    {fila.voided ? <span className="ml-2 text-xs text-error">anulado</span> : null}
+                    <span className="inline-flex items-center gap-1.5">
+                      {fila.fullNumber}
+                      {fila.voided ? <Insignia tono="error">anulado</Insignia> : null}
+                    </span>
                   </td>
                   <td className="max-w-48 truncate px-2 py-1.5">{fila.customerName}</td>
                   <td className="cifra px-2 py-1.5 text-right">{formatMoney(toMoney(fila.exempt), { symbol: false })}</td>
@@ -289,6 +297,7 @@ export function Reportes() {
             </tfoot>
           </table>
         )}
+        </div>
       </Tarjeta>
 
       <p className="text-center text-xs text-apagado">
@@ -301,9 +310,9 @@ export function Reportes() {
 
 function Resumen({ titulo, valor }: { titulo: string; valor: string }) {
   return (
-    <Tarjeta className="px-4 py-3">
-      <span className="block text-xs text-apagado">{titulo}</span>
-      <span className="cifra mt-0.5 block text-lg font-semibold">{valor}</span>
+    <Tarjeta className="px-4 py-3.5">
+      <span className="block text-xs font-medium uppercase tracking-wide text-apagado">{titulo}</span>
+      <span className="cifra mt-1.5 block text-xl font-semibold text-tinta">{valor}</span>
     </Tarjeta>
   )
 }

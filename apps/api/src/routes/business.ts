@@ -6,16 +6,24 @@ import {
   adjustStock,
   archiveCustomer,
   archiveProduct,
+  archiveSupplier,
   closeCashSession,
   createCustomer,
   createProduct,
+  createPurchase,
   createSale,
+  createSupplier,
   dailySales,
   fetchBcvRate,
   customerHistory,
   getCashSessionSummary,
+  getDocument,
+  getIssuer,
   getOpenSession,
+  getPurchase,
   getRateFor,
+  listControlBooks,
+  listPurchases,
   listRates,
   listReceivables,
   listNumberBlocks,
@@ -26,16 +34,21 @@ import {
   releaseNumberBlock,
   reserveNumberBlock,
   searchCustomers,
+  searchDocuments,
+  searchSuppliers,
   salesBook,
   salesBookToCsv,
   salesByMethod,
   searchProducts,
+  setControlRange,
   setRate,
   syncBcvRate,
   toIsoDate,
   topProducts,
   updateCustomer,
+  updateIssuer,
   updateProduct,
+  updateSupplier,
   voidSale,
 } from '@fve/core'
 
@@ -60,6 +73,8 @@ const paymentMethodSchema = z.enum([
 ])
 
 const idKindSchema = z.enum(['V', 'E', 'J', 'G', 'P'])
+
+const documentKindSchema = z.enum(['FACTURA', 'PRESUPUESTO', 'NOTA_ENTREGA', 'RECIBO', 'NOTA_CREDITO'])
 
 /** Cuánto hacia atrás se admite fechar una venta sincronizada. */
 const MAX_ATRASO_DIAS = 30
@@ -463,7 +478,7 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         currency: currencySchema,
         customerId: z.string().uuid().optional(),
         cashSessionId: z.string().uuid().optional(),
-        kind: z.enum(['PRESUPUESTO', 'NOTA_ENTREGA', 'RECIBO', 'NOTA_CREDITO']).optional(),
+        kind: documentKindSchema.optional(),
         changeCurrency: currencySchema.optional(),
         clientRef: z.string().min(1).max(120).optional(),
         reservedNumber: z.number().int().min(1).optional(),
@@ -537,6 +552,215 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     })
 
     return reply.status(204).send()
+  })
+
+  // --- Documentos emitidos --------------------------------------------------
+
+  /**
+   * Busca entre lo emitido.
+   *
+   * Es la pantalla a la que uno va cuando un cliente pide copia de una factura:
+   * busca por número, número de control y nombre del cliente a la vez.
+   */
+  app.get('/documents', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z
+      .object({
+        q: z.string().optional(),
+        kind: documentKindSchema.optional(),
+        status: z.enum(['ISSUED', 'VOIDED']).optional(),
+        from: isoDateSchema.optional(),
+        to: isoDateSchema.optional(),
+        customerId: z.string().uuid().optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      })
+      .parse(request.query)
+
+    return reply.send({
+      documents: await searchDocuments(db, { tenantId: ctx.activeTenantId, ...query }),
+    })
+  })
+
+  /** Un documento completo, listo para ver o imprimir. Nada se recalcula. */
+  app.get('/documents/:documentId', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ documentId: z.string().uuid() }).parse(request.params)
+    return reply.send({
+      document: await getDocument(db, { tenantId: ctx.activeTenantId, documentId: params.documentId }),
+    })
+  })
+
+  // --- Datos del emisor (encabezado de los documentos) ----------------------
+
+  app.get('/issuer', async (request, reply) => {
+    const ctx = requireTenant(request)
+    return reply.send({ issuer: await getIssuer(db, ctx.activeTenantId) })
+  })
+
+  app.patch('/issuer', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const body = z
+      .object({
+        tradeName: z.string().nullable().optional(),
+        legalName: z.string().nullable().optional(),
+        address: z.string().nullable().optional(),
+        city: z.string().nullable().optional(),
+        phone: z.string().nullable().optional(),
+        email: z.string().email().nullable().optional(),
+        website: z.string().nullable().optional(),
+        documentFooter: z.string().nullable().optional(),
+      })
+      .parse(request.body)
+
+    await updateIssuer(db, { tenantId: ctx.activeTenantId, ...body })
+    return reply.status(204).send()
+  })
+
+  // --- Talonarios de números de control -------------------------------------
+
+  /** Estado de los talonarios. Avisa antes de quedarse sin papel para facturar. */
+  app.get('/control-books', async (request, reply) => {
+    const ctx = requireTenant(request)
+    return reply.send({ books: await listControlBooks(db, ctx.activeTenantId) })
+  })
+
+  /**
+   * Carga el rango de números de control de un talonario nuevo.
+   *
+   * Los números vienen preimpresos por la imprenta autorizada; el negocio dice
+   * desde dónde hasta dónde va y el sistema los reparte en orden.
+   */
+  app.post('/control-books', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const body = z
+      .object({
+        kind: documentKindSchema.default('FACTURA'),
+        prefix: z.string().nullable().optional(),
+        from: z.number().int().min(1),
+        to: z.number().int().min(1),
+      })
+      .parse(request.body)
+
+    await setControlRange(db, {
+      tenantId: ctx.activeTenantId,
+      kind: body.kind,
+      prefix: body.prefix ?? null,
+      from: body.from,
+      to: body.to,
+    })
+    return reply.status(204).send()
+  })
+
+  // --- Proveedores ----------------------------------------------------------
+
+  app.get('/suppliers', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z
+      .object({ q: z.string().optional(), limit: z.coerce.number().int().min(1).max(200).optional() })
+      .parse(request.query)
+    return reply.send({
+      suppliers: await searchSuppliers(db, { tenantId: ctx.activeTenantId, query: query.q, limit: query.limit }),
+    })
+  })
+
+  app.post('/suppliers', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const body = z
+      .object({
+        idKind: idKindSchema,
+        idNumber: z.string().min(1),
+        name: z.string().min(1),
+        contactName: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional(),
+        address: z.string().optional(),
+        notes: z.string().optional(),
+      })
+      .parse(request.body)
+
+    const created = await createSupplier(db, { tenantId: ctx.activeTenantId, ...body })
+    return reply.status(201).send(created)
+  })
+
+  app.patch('/suppliers/:supplierId', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ supplierId: z.string().uuid() }).parse(request.params)
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        contactName: z.string().nullable().optional(),
+        phone: z.string().nullable().optional(),
+        email: z.string().email().nullable().optional(),
+        address: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      })
+      .parse(request.body)
+
+    await updateSupplier(db, { tenantId: ctx.activeTenantId, supplierId: params.supplierId, ...body })
+    return reply.status(204).send()
+  })
+
+  app.delete('/suppliers/:supplierId', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ supplierId: z.string().uuid() }).parse(request.params)
+    await archiveSupplier(db, { tenantId: ctx.activeTenantId, supplierId: params.supplierId })
+    return reply.status(204).send()
+  })
+
+  // --- Compras --------------------------------------------------------------
+
+  app.get('/purchases', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z
+      .object({
+        supplierId: z.string().uuid().optional(),
+        from: isoDateSchema.optional(),
+        to: isoDateSchema.optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      })
+      .parse(request.query)
+    return reply.send({ purchases: await listPurchases(db, { tenantId: ctx.activeTenantId, ...query }) })
+  })
+
+  app.get('/purchases/:purchaseId', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ purchaseId: z.string().uuid() }).parse(request.params)
+    return reply.send({
+      purchase: await getPurchase(db, { tenantId: ctx.activeTenantId, purchaseId: params.purchaseId }),
+    })
+  })
+
+  /**
+   * Registra una compra.
+   *
+   * Los totales se copian de la factura del proveedor; el IVA va tal como él lo
+   * cobró. Cada renglón con un producto que lleva inventario suma existencia.
+   */
+  app.post('/purchases', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const body = z
+      .object({
+        supplierId: z.string().uuid(),
+        invoiceNumber: z.string().min(1),
+        controlNumber: z.string().optional(),
+        currency: currencySchema,
+        iva: moneySchema,
+        notes: z.string().optional(),
+        lines: z
+          .array(
+            z.object({
+              productId: z.string().uuid().optional(),
+              description: z.string().min(1),
+              quantity: quantitySchema,
+              unitCost: moneySchema,
+            }),
+          )
+          .min(1),
+      })
+      .parse(request.body)
+
+    const created = await createPurchase(db, { tenantId: ctx.activeTenantId, userId: ctx.userId, ...body })
+    return reply.status(201).send(created)
   })
 
   // --- Caja -----------------------------------------------------------------

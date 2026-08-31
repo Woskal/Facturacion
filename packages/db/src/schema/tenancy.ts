@@ -17,8 +17,18 @@ export const tenants = pgTable(
     rifKind: idKind('rif_kind').notNull(),
     rifNumber: text('rif_number').notNull(),
     tradeName: text('trade_name'),
+    /** Razón social, si difiere del nombre comercial. */
+    legalName: text('legal_name'),
     address: text('address'),
+    city: text('city'),
     phone: text('phone'),
+    email: text('email'),
+    website: text('website'),
+    /**
+     * Pie libre del documento: condiciones de pago, garantía, lo que el negocio
+     * quiera decirle a su cliente. Va impreso al final de cada documento.
+     */
+    documentFooter: text('document_footer'),
     /** Si el negocio es contribuyente especial: cambia el tratamiento del IGTF. */
     specialTaxpayer: boolean('special_taxpayer').notNull().default(false),
     /** Alícuota de IGTF vigente para este negocio, en puntos básicos. */

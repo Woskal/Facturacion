@@ -71,6 +71,20 @@
       "when": 1788057927484,
       "tag": "0009_subscriptions_security",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788073256466,
+      "tag": "0010_factura",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788163797580,
+      "tag": "0011_proveedores_compras",
+      "breakpoints": true
     }
   ]
 }

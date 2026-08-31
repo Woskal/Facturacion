@@ -141,6 +141,7 @@ export async function createTenant(db: Database, input: CreateTenantInput): Prom
       .returning({ id: schema.stations.id })
 
     const series = [
+      { kind: 'FACTURA' as const, prefix: 'F' },
       { kind: 'NOTA_ENTREGA' as const, prefix: 'NE' },
       { kind: 'PRESUPUESTO' as const, prefix: 'PR' },
       { kind: 'RECIBO' as const, prefix: 'RE' },

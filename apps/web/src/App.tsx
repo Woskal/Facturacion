@@ -2,13 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { formatRate, rate as makeRate, type Rate } from '@fve/money'
 
 import { ApiError, api, getToken, setToken, type LoginResponse, type Membership, type RateJson } from './api'
-import { Aviso, Boton } from './components/ui'
+import { Aviso } from './components/ui'
+import { IconoMenu, IconoSalir, iconos } from './components/iconos'
 import { BarraConexion, useConexion } from './components/Conexion'
 import { guardarTasa, leerTasa, limpiarNegocio } from './local'
 import { prepararParaOffline } from './sync'
 import { Caja } from './pages/Caja'
 import { Catalogo } from './pages/Catalogo'
 import { Clientes } from './pages/Clientes'
+import { Documentos } from './pages/Documentos'
+import { Proveedores } from './pages/Proveedores'
 import { ElegirNegocio } from './pages/ElegirNegocio'
 import { Login } from './pages/Login'
 import { Cobranza } from './pages/Cobranza'
@@ -22,12 +25,23 @@ type Estado =
   | { fase: 'eligiendo'; memberships: Membership[] }
   | { fase: 'dentro'; negocio: string; tenantId: string }
 
-type Seccion = 'venta' | 'catalogo' | 'clientes' | 'caja' | 'reportes' | 'plataforma' | 'cobranza'
+type Seccion =
+  | 'venta'
+  | 'documentos'
+  | 'catalogo'
+  | 'clientes'
+  | 'proveedores'
+  | 'caja'
+  | 'reportes'
+  | 'plataforma'
+  | 'cobranza'
 
 const SECCIONES: { clave: Seccion; nombre: string }[] = [
   { clave: 'venta', nombre: 'Venta' },
+  { clave: 'documentos', nombre: 'Documentos' },
   { clave: 'catalogo', nombre: 'Catálogo' },
   { clave: 'clientes', nombre: 'Clientes' },
+  { clave: 'proveedores', nombre: 'Proveedores' },
   { clave: 'caja', nombre: 'Caja' },
   { clave: 'reportes', nombre: 'Reportes' },
 ]
@@ -136,16 +150,25 @@ export function App() {
   }, [estado.fase, estado.fase === 'dentro' ? estado.tenantId : null, stationId, enLinea])
 
   /**
-   * La tasa se refresca sola cada cinco minutos.
+   * La tasa se refresca sola cada minuto.
    *
-   * El servidor la sincroniza con el BCV por su cuenta; esto solo evita que una
-   * caja abierta todo el día siga mostrando la de la mañana.
+   * El servidor la sincroniza con el BCV por su cuenta; esto mantiene la caja al
+   * día sin que nadie recargue, para que una caja abierta todo el día nunca
+   * muestre la tasa de la mañana. Al volver de estar oculta la pestaña también
+   * se refresca, porque el temporizador se frena en segundo plano.
    */
   useEffect(() => {
     if (estado.fase !== 'dentro') return
     const tenantId = estado.tenantId
-    const temporizador = setInterval(() => void cargarTasa(tenantId), 5 * 60 * 1000)
-    return () => clearInterval(temporizador)
+    const temporizador = setInterval(() => void cargarTasa(tenantId), 60 * 1000)
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') void cargarTasa(tenantId)
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => {
+      clearInterval(temporizador)
+      document.removeEventListener('visibilitychange', alVolver)
+    }
   }, [estado.fase, estado.fase === 'dentro' ? estado.tenantId : null, cargarTasa])
 
   function entrar(sesion: LoginResponse) {
@@ -250,6 +273,8 @@ export function App() {
       {seccion === 'plataforma' ? <Operador /> : null}
       {seccion === 'cobranza' ? <Cobranza /> : null}
 
+      {seccion === 'documentos' ? <Documentos /> : null}
+      {seccion === 'proveedores' ? <Proveedores /> : null}
       {rate && seccion === 'catalogo' ? <Catalogo rate={rate} /> : null}
       {rate && seccion === 'clientes' ? <Clientes rate={rate} /> : null}
       {seccion === 'reportes' ? <Reportes /> : null}
@@ -266,13 +291,27 @@ export function App() {
 
       {rate && stationId && seccion === 'caja' ? <Caja stationId={stationId} rate={rate} /> : null}
 
-      {rate && !stationId && seccion !== 'plataforma' && seccion !== 'cobranza' && seccion !== 'reportes' ? (
+      {rate &&
+      !stationId &&
+      seccion !== 'plataforma' &&
+      seccion !== 'cobranza' &&
+      seccion !== 'reportes' &&
+      seccion !== 'documentos' &&
+      seccion !== 'proveedores' ? (
         <Aviso tipo="alerta">Este negocio no tiene ninguna caja configurada, así que no se puede vender.</Aviso>
       ) : null}
     </Marco>
   )
 }
 
+/**
+ * Marco de la aplicación.
+ *
+ * En pantalla ancha, una barra lateral fija con la navegación; el área de
+ * trabajo ocupa el resto y se desplaza sola. En un teléfono la barra se esconde
+ * detrás de un botón y entra como cajón, para que el pulgar tenga toda la
+ * pantalla para el trabajo. La interfaz de props es la misma en ambos casos.
+ */
 function Marco({
   titulo,
   subtitulo,
@@ -290,39 +329,105 @@ function Marco({
   onSalir: () => void
   children: React.ReactNode
 }) {
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const activa = pestanas.find((p) => p.clave === seccion)
+
+  const navegar = (clave: Seccion) => {
+    onSeccion(clave)
+    setMenuAbierto(false)
+  }
+
+  const listaNav = (
+    <nav className="flex flex-col gap-0.5">
+      {pestanas.map((pestana) => {
+        const seleccionada = seccion === pestana.clave
+        return (
+          <button
+            key={pestana.clave}
+            onClick={() => navegar(pestana.clave)}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              seleccionada
+                ? 'bg-acento text-white shadow-suave'
+                : 'text-marca-apagado hover:bg-marca-alta hover:text-marca-texto'
+            }`}
+          >
+            <span className={seleccionada ? 'text-white' : 'text-marca-apagado'}>
+              {iconos[pestana.clave] ?? iconos.documentos}
+            </span>
+            {pestana.nombre}
+          </button>
+        )
+      })}
+    </nav>
+  )
+
+  const cabeceraNegocio = (
+    <div className="min-w-0">
+      <span className="block truncate text-sm font-semibold text-marca-texto">{titulo}</span>
+      <span className="cifra block truncate text-xs text-marca-apagado">{subtitulo}</span>
+    </div>
+  )
+
+  const botonSalir = (
+    <button
+      onClick={onSalir}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-marca-apagado transition hover:bg-marca-alta hover:text-marca-texto"
+    >
+      <IconoSalir />
+      Salir
+    </button>
+  )
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="border-b border-borde bg-white">
-        <div className="flex items-center justify-between gap-4 px-5 pb-2 pt-2.5">
-          <div className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{titulo}</span>
-            <span className="cifra block text-xs text-apagado">{subtitulo}</span>
-          </div>
-          <Boton variante="plano" onClick={onSalir}>
-            Salir
-          </Boton>
-        </div>
+    <div className="flex h-full bg-papel lg:gap-0">
+      {/* Barra lateral fija oscura — solo pantalla ancha. */}
+      <aside className="hidden w-64 shrink-0 flex-col bg-marca lg:flex">
+        <div className="border-b border-marca-borde px-5 py-4">{cabeceraNegocio}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">{listaNav}</div>
+        <div className="border-t border-marca-borde p-3">{botonSalir}</div>
+      </aside>
 
-        {pestanas.length > 0 ? (
-          <nav className="flex gap-1 px-4">
-            {pestanas.map((pestana) => (
+      {/* Cajón oscuro — solo teléfono. */}
+      {menuAbierto ? (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="atenuar absolute inset-0 bg-tinta/50" onClick={() => setMenuAbierto(false)} />
+          <aside className="surgir absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col bg-marca">
+            <div className="flex items-center justify-between gap-3 border-b border-marca-borde px-5 py-4">
+              {cabeceraNegocio}
               <button
-                key={pestana.clave}
-                onClick={() => onSeccion(pestana.clave)}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm transition ${
-                  seccion === pestana.clave
-                    ? 'border-acento font-medium text-acento'
-                    : 'border-transparent text-apagado hover:text-tinta'
-                }`}
+                onClick={() => setMenuAbierto(false)}
+                aria-label="Cerrar menú"
+                className="shrink-0 rounded-lg p-1.5 text-marca-apagado hover:bg-marca-alta hover:text-marca-texto"
               >
-                {pestana.nombre}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
               </button>
-            ))}
-          </nav>
-        ) : null}
-      </header>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">{listaNav}</div>
+            <div className="border-t border-borde p-3">{botonSalir}</div>
+          </aside>
+        </div>
+      ) : null}
 
-      <main className="min-h-0 flex-1 space-y-3 p-4">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Barra superior — solo teléfono. */}
+        <header className="flex items-center gap-3 border-b border-borde bg-marca px-4 py-2.5 lg:hidden">
+          <button
+            onClick={() => setMenuAbierto(true)}
+            aria-label="Abrir menú"
+            className="-ml-1 shrink-0 rounded-lg p-1.5 text-tinta hover:bg-tenue"
+          >
+            <IconoMenu />
+          </button>
+          <div className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-tinta">{activa?.nombre ?? titulo}</span>
+            <span className="cifra block truncate text-xs text-apagado">{titulo}</span>
+          </div>
+        </header>
+
+        <main className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 lg:p-6">{children}</main>
+      </div>
     </div>
   )
 }

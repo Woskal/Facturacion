@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, api } from '../api'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, Campo, Encabezado, Insignia, Modal, Select, Tarjeta, Vacio } from '../components/ui'
 
 interface TenantJson {
   tenantId: string
@@ -71,15 +71,11 @@ export function Operador() {
 
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Negocios de la plataforma</h1>
-          <p className="text-sm text-apagado">{negocios.length} en total</p>
-        </div>
+      <Encabezado titulo="Negocios de la plataforma" subtitulo={`${negocios.length} en total`}>
         <Boton variante="principal" onClick={() => setCreandoNegocio(true)}>
           Nuevo negocio
         </Boton>
-      </div>
+      </Encabezado>
 
       {error ? <Aviso>{error}</Aviso> : null}
 
@@ -88,44 +84,43 @@ export function Operador() {
           <Vacio>Todavía no hay negocios dados de alta.</Vacio>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 border-b border-borde bg-white text-xs text-apagado">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Negocio</th>
-                <th className="w-24 px-2 py-2 text-center font-medium">Cuentas</th>
-                <th className="w-28 px-2 py-2 text-center font-medium">Estado</th>
+                <th className="px-4 py-2.5 text-left font-medium">Negocio</th>
+                <th className="w-24 px-2 py-2.5 text-center font-medium">Cuentas</th>
+                <th className="w-28 px-2 py-2.5 text-center font-medium">Estado</th>
                 <th className="w-72" />
               </tr>
             </thead>
             <tbody>
               {negocios.map((negocio) => (
-                <tr key={negocio.tenantId} className="border-b border-borde/60 last:border-0">
-                  <td className="px-4 py-2">
-                    <span className="block font-medium">{negocio.name}</span>
+                <tr key={negocio.tenantId} className="border-b border-borde/60 transition last:border-0 hover:bg-tenue/50">
+                  <td className="px-4 py-2.5">
+                    <span className="block font-medium text-tinta">{negocio.name}</span>
                     <span className="cifra block text-xs text-apagado">{negocio.rif}</span>
                   </td>
-                  <td className="cifra px-2 py-2 text-center">{negocio.userCount}</td>
-                  <td className="px-2 py-2 text-center">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        negocio.suspended ? 'bg-error/10 text-error' : 'bg-exito/10 text-exito'
-                      }`}
-                    >
+                  <td className="cifra px-2 py-2.5 text-center text-tinta">{negocio.userCount}</td>
+                  <td className="px-2 py-2.5 text-center">
+                    <Insignia tono={negocio.suspended ? 'error' : 'exito'}>
                       {negocio.suspended ? 'suspendido' : 'activo'}
-                    </span>
+                    </Insignia>
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right">
-                    <Boton variante="plano" onClick={() => setViendo(negocio)}>
-                      Cuentas
-                    </Boton>
-                    <Boton variante="plano" onClick={() => setCreandoUsuario(negocio)}>
-                      Agregar
-                    </Boton>
-                    <Boton
-                      variante={negocio.suspended ? 'plano' : 'peligro'}
-                      onClick={() => void alternarSuspension(negocio)}
-                    >
-                      {negocio.suspended ? 'Reactivar' : 'Suspender'}
-                    </Boton>
+                  <td className="whitespace-nowrap px-2 py-2.5 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Boton variante="plano" tamano="sm" onClick={() => setViendo(negocio)}>
+                        Cuentas
+                      </Boton>
+                      <Boton variante="plano" tamano="sm" onClick={() => setCreandoUsuario(negocio)}>
+                        Agregar
+                      </Boton>
+                      <Boton
+                        variante={negocio.suspended ? 'plano' : 'peligro'}
+                        tamano="sm"
+                        onClick={() => void alternarSuspension(negocio)}
+                      >
+                        {negocio.suspended ? 'Reactivar' : 'Suspender'}
+                      </Boton>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -160,35 +155,21 @@ export function Operador() {
       ) : null}
 
       {viendo ? (
-        <Modal titulo={`Cuentas de ${viendo.name}`}>
+        <Modal titulo="Cuentas del negocio" descripcion={viendo.name} onCerrar={() => setViendo(null)}>
           {usuarios.length === 0 ? (
             <Vacio>Este negocio no tiene cuentas asignadas.</Vacio>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {usuarios.map((usuario) => (
-                <li key={usuario.userId} className="rounded-md bg-papel px-3 py-2 text-sm">
-                  <span className="block font-medium">{usuario.fullName}</span>
+                <li key={usuario.userId} className="rounded-lg bg-tenue px-3 py-2 text-sm">
+                  <span className="block font-medium text-tinta">{usuario.fullName}</span>
                   <span className="block text-xs text-apagado">{usuario.email}</span>
                 </li>
               ))}
             </ul>
           )}
-          <Boton variante="plano" className="mt-4 w-full" onClick={() => setViendo(null)}>
-            Cerrar
-          </Boton>
         </Modal>
       ) : null}
-    </div>
-  )
-}
-
-function Modal({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-tinta/30 p-6">
-      <Tarjeta className="w-full max-w-md p-5">
-        <h2 className="mb-4 text-lg font-semibold">{titulo}</h2>
-        {children}
-      </Tarjeta>
     </div>
   )
 }
@@ -220,25 +201,18 @@ function NuevoNegocio({ onCerrar, onCreado }: { onCerrar: () => void; onCreado: 
   }
 
   return (
-    <Modal titulo="Nuevo negocio">
+    <Modal titulo="Nuevo negocio" onCerrar={onCerrar}>
       <div className="space-y-3">
         <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
 
-        <div className="grid grid-cols-[80px_1fr] gap-3">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">Tipo</span>
-            <select
-              value={rifKind}
-              onChange={(e) => setRifKind(e.target.value as typeof rifKind)}
-              className="w-full rounded-lg border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-acento"
-            >
-              {(['J', 'G', 'V', 'E', 'P'] as const).map((letra) => (
-                <option key={letra} value={letra}>
-                  {letra}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="grid grid-cols-[90px_1fr] gap-3">
+          <Select etiqueta="Tipo" value={rifKind} onChange={(e) => setRifKind(e.target.value as typeof rifKind)}>
+            {(['J', 'G', 'V', 'E', 'P'] as const).map((letra) => (
+              <option key={letra} value={letra}>
+                {letra}
+              </option>
+            ))}
+          </Select>
           <Campo
             etiqueta="RIF"
             value={rifNumber}
@@ -249,7 +223,7 @@ function NuevoNegocio({ onCerrar, onCreado }: { onCerrar: () => void; onCreado: 
 
         <Campo etiqueta="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="opcional" />
 
-        <p className="rounded-lg bg-papel px-3 py-2 text-xs text-apagado">
+        <p className="rounded-lg bg-tenue px-3 py-2 text-xs text-apagado">
           El negocio queda listo para vender: alícuotas de IVA, lista de precios, caja y series de numeración.
           El catálogo lo carga el propio negocio.
         </p>
@@ -307,7 +281,7 @@ function NuevaCuenta({
   }
 
   return (
-    <Modal titulo={`Cuenta para ${negocio.name}`}>
+    <Modal titulo="Nueva cuenta" descripcion={negocio.name} onCerrar={onCerrar}>
       <div className="space-y-3">
         <Campo etiqueta="Nombre" value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus />
         <Campo etiqueta="Correo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />

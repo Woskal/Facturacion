@@ -35,11 +35,15 @@ export const priceMode = pgEnum('price_mode', ['IVA_INCLUIDO', 'IVA_EXCLUIDO'])
 /**
  * Documentos que emite el sistema.
  *
- * Ninguno es un documento fiscal: la factura la produce la máquina fiscal o la
- * imprenta autorizada del cliente. Los nombres se dejan en español porque son
- * los términos con los que el usuario los pide.
+ * La FACTURA se imprime sobre forma libre de una imprenta autorizada, de donde
+ * sale su número de control. El sistema no la valida ante el SENIAT: la arma, la
+ * numera y la imprime, que es lo que hace un sistema administrativo.
+ *
+ * Los nombres se dejan en español porque son los términos con los que el usuario
+ * los pide.
  */
 export const documentKind = pgEnum('document_kind', [
+  'FACTURA',
   'PRESUPUESTO',
   'NOTA_ENTREGA',
   'RECIBO',

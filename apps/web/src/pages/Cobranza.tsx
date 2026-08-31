@@ -3,7 +3,7 @@ import { formatMoney } from '@fve/money'
 
 import { ApiError, api, fromMoney, toMoney, type MoneyJson } from '../api'
 import { aMonto } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, Campo, Encabezado, Insignia, Modal, Select, Tarjeta, Vacio } from '../components/ui'
 
 type Estado = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
 type Periodo = 'MENSUAL' | 'SEMESTRAL' | 'ANUAL'
@@ -30,12 +30,12 @@ interface PagoJson {
   paidThroughAfter: string
 }
 
-const ETIQUETAS: Record<Estado, { texto: string; clase: string }> = {
-  TRIAL: { texto: 'prueba', clase: 'bg-acento/10 text-acento' },
-  ACTIVE: { texto: 'al día', clase: 'bg-exito/10 text-exito' },
-  PAST_DUE: { texto: 'vencido', clase: 'bg-alerta/10 text-alerta' },
-  SUSPENDED: { texto: 'suspendido', clase: 'bg-error/10 text-error' },
-  CANCELLED: { texto: 'cancelado', clase: 'bg-borde text-apagado' },
+const ETIQUETAS: Record<Estado, { texto: string; tono: 'neutro' | 'acento' | 'exito' | 'alerta' | 'error' }> = {
+  TRIAL: { texto: 'prueba', tono: 'acento' },
+  ACTIVE: { texto: 'al día', tono: 'exito' },
+  PAST_DUE: { texto: 'vencido', tono: 'alerta' },
+  SUSPENDED: { texto: 'suspendido', tono: 'error' },
+  CANCELLED: { texto: 'cancelado', tono: 'neutro' },
 }
 
 const MEDIOS = ['PAGO_MOVIL', 'ZELLE', 'USDT', 'TRANSFERENCIA_BS', 'EFECTIVO_USD', 'EFECTIVO_BS'] as const
@@ -97,16 +97,14 @@ export function Cobranza() {
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Cobranza</h1>
-          <p className="text-sm text-apagado">
-            {filas.length} negocio{filas.length === 1 ? '' : 's'} · {cobradoMes} al día
-            {porVencer > 0 ? ` · ${porVencer} por vencer` : ''}
-          </p>
-        </div>
+      <Encabezado
+        titulo="Cobranza"
+        subtitulo={`${filas.length} negocio${filas.length === 1 ? '' : 's'} · ${cobradoMes} al día${
+          porVencer > 0 ? ` · ${porVencer} por vencer` : ''
+        }`}
+      >
         <Boton onClick={() => void correrCorte()}>Revisar vencimientos</Boton>
-      </div>
+      </Encabezado>
 
       {error ? <Aviso>{error}</Aviso> : null}
       {aviso ? <Aviso tipo="exito">{aviso}</Aviso> : null}
@@ -116,13 +114,13 @@ export function Cobranza() {
           <Vacio>Todavía no hay negocios con suscripción.</Vacio>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 border-b border-borde bg-white text-xs text-apagado">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Negocio</th>
-                <th className="w-28 px-2 py-2 text-center font-medium">Estado</th>
-                <th className="w-28 px-2 py-2 text-right font-medium">Vence</th>
-                <th className="w-24 px-2 py-2 text-right font-medium">Días</th>
-                <th className="w-24 px-2 py-2 text-right font-medium">Plan</th>
+                <th className="px-4 py-2.5 text-left font-medium">Negocio</th>
+                <th className="w-28 px-2 py-2.5 text-center font-medium">Estado</th>
+                <th className="w-28 px-2 py-2.5 text-right font-medium">Vence</th>
+                <th className="w-24 px-2 py-2.5 text-right font-medium">Días</th>
+                <th className="w-24 px-2 py-2.5 text-right font-medium">Plan</th>
                 <th className="w-36" />
               </tr>
             </thead>
@@ -130,31 +128,29 @@ export function Cobranza() {
               {filas.map((fila) => {
                 const etiqueta = ETIQUETAS[fila.status]
                 return (
-                  <tr key={fila.tenantId} className="border-b border-borde/60 last:border-0">
-                    <td className="px-4 py-2">
-                      <span className="block font-medium">{fila.tenantName}</span>
+                  <tr key={fila.tenantId} className="border-b border-borde/60 transition last:border-0 hover:bg-tenue/50">
+                    <td className="px-4 py-2.5">
+                      <span className="block font-medium text-tinta">{fila.tenantName}</span>
                       <span className="cifra block text-xs text-apagado">{fila.rif}</span>
                     </td>
-                    <td className="px-2 py-2 text-center">
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${etiqueta.clase}`}>
-                        {etiqueta.texto}
-                      </span>
+                    <td className="px-2 py-2.5 text-center">
+                      <Insignia tono={etiqueta.tono}>{etiqueta.texto}</Insignia>
                     </td>
-                    <td className="cifra px-2 py-2 text-right">{fila.paidThrough}</td>
+                    <td className="cifra px-2 py-2.5 text-right text-tinta">{fila.paidThrough}</td>
                     <td
-                      className={`cifra px-2 py-2 text-right ${
+                      className={`cifra px-2 py-2.5 text-right ${
                         fila.daysLeft < 0
                           ? 'font-medium text-error'
                           : fila.daysLeft <= 7
                             ? 'font-medium text-alerta'
-                            : ''
+                            : 'text-tinta'
                       }`}
                     >
                       {fila.daysLeft < 0 ? `${-fila.daysLeft} vencidos` : fila.daysLeft}
                     </td>
-                    <td className="cifra px-2 py-2 text-right">{formatMoney(toMoney(fila.price))}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right">
-                      <Boton variante="plano" onClick={() => setCobrando(fila)}>
+                    <td className="cifra px-2 py-2.5 text-right text-tinta">{formatMoney(toMoney(fila.price))}</td>
+                    <td className="whitespace-nowrap px-2 py-2.5 text-right">
+                      <Boton variante="suave" tamano="sm" onClick={() => setCobrando(fila)}>
                         Registrar pago
                       </Boton>
                     </td>
@@ -239,54 +235,47 @@ function RegistrarPago({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-tinta/30 p-6">
-      <Tarjeta className="w-full max-w-lg p-5">
-        <h2 className="text-lg font-semibold">Pago de {fila.tenantName}</h2>
-        <p className="mt-1 text-sm text-apagado">
-          Vence el {fila.paidThrough} · plan {fila.period.toLowerCase()} de {formatMoney(toMoney(fila.price))}
-        </p>
+    <Modal
+      titulo="Registrar pago"
+      descripcion={`${fila.tenantName} · vence ${fila.paidThrough} · plan ${fila.period.toLowerCase()} de ${formatMoney(toMoney(fila.price))}`}
+      onCerrar={onCerrar}
+      ancho="lg"
+    >
+      <div className="space-y-3">
+        <div className="grid grid-cols-[90px_1fr_90px] gap-3">
+          <Select etiqueta="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value as 'USD' | 'VES')}>
+            <option value="USD">$</option>
+            <option value="VES">Bs</option>
+          </Select>
+          <Campo
+            etiqueta="Monto recibido"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            className="cifra text-right"
+            autoFocus
+          />
+          <Campo
+            etiqueta="Períodos"
+            type="number"
+            min={1}
+            max={24}
+            value={periodos}
+            onChange={(e) => setPeriodos(Math.max(1, Number(e.target.value) || 1))}
+            className="cifra text-right"
+          />
+        </div>
 
-        <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-[90px_1fr_90px] gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium">Moneda</span>
-              <select
-                value={moneda}
-                onChange={(e) => setMoneda(e.target.value as 'USD' | 'VES')}
-                className="w-full rounded-lg border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-acento"
-              >
-                <option value="USD">$</option>
-                <option value="VES">Bs</option>
-              </select>
-            </label>
-            <Campo
-              etiqueta="Monto recibido"
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-              className="cifra text-right"
-              autoFocus
-            />
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium">Períodos</span>
-              <input
-                type="number"
-                min={1}
-                max={24}
-                value={periodos}
-                onChange={(e) => setPeriodos(Math.max(1, Number(e.target.value) || 1))}
-                className="cifra w-full rounded-lg border border-borde bg-white px-3 py-2 text-right text-sm outline-none focus:border-acento"
-              />
-            </label>
-          </div>
-
-          <div className="flex flex-wrap gap-1">
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-tinta">Medio de pago</span>
+          <div className="flex flex-wrap gap-1.5">
             {MEDIOS.map((medio) => (
               <button
                 key={medio}
+                type="button"
                 onClick={() => setMetodo(medio)}
-                className={`rounded-md border px-2.5 py-1 text-xs transition ${
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                   metodo === medio
-                    ? 'border-acento bg-acento/10 font-medium text-acento'
+                    ? 'border-acento bg-acento-tenue text-acento'
                     : 'border-borde text-apagado hover:text-tinta'
                 }`}
               >
@@ -294,46 +283,46 @@ function RegistrarPago({
               </button>
             ))}
           </div>
-
-          <Campo
-            etiqueta="Referencia"
-            value={referencia}
-            onChange={(e) => setReferencia(e.target.value)}
-            ayuda="Es lo único que permite reconstruir una cobranza discutida."
-          />
-
-          {error ? <Aviso>{error}</Aviso> : null}
-
-          {historial.length > 0 ? (
-            <div>
-              <span className="mb-1 block text-xs font-medium text-apagado">Pagos anteriores</span>
-              <ul className="max-h-32 space-y-1 overflow-auto">
-                {historial.map((pago, indice) => (
-                  <li
-                    key={indice}
-                    className="flex items-center justify-between rounded-md bg-papel px-3 py-1.5 text-xs"
-                  >
-                    <span>
-                      {new Date(pago.receivedAt).toLocaleDateString('es-VE')} · {NOMBRES[pago.method] ?? pago.method}
-                      {pago.reference ? ` · ${pago.reference}` : ''}
-                    </span>
-                    <span className="cifra">{formatMoney(toMoney(pago.amount))}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Boton variante="plano" onClick={onCerrar}>
-              Cancelar
-            </Boton>
-            <Boton variante="principal" disabled={enviando || !monto} onClick={() => void guardar()}>
-              {enviando ? 'Guardando…' : 'Registrar pago'}
-            </Boton>
-          </div>
         </div>
-      </Tarjeta>
-    </div>
+
+        <Campo
+          etiqueta="Referencia"
+          value={referencia}
+          onChange={(e) => setReferencia(e.target.value)}
+          ayuda="Es lo único que permite reconstruir una cobranza discutida."
+        />
+
+        {error ? <Aviso>{error}</Aviso> : null}
+
+        {historial.length > 0 ? (
+          <div>
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-apagado">Pagos anteriores</span>
+            <ul className="max-h-32 space-y-1 overflow-auto">
+              {historial.map((pago, indice) => (
+                <li
+                  key={indice}
+                  className="flex items-center justify-between rounded-lg bg-tenue px-3 py-1.5 text-xs"
+                >
+                  <span className="text-apagado">
+                    {new Date(pago.receivedAt).toLocaleDateString('es-VE')} · {NOMBRES[pago.method] ?? pago.method}
+                    {pago.reference ? ` · ${pago.reference}` : ''}
+                  </span>
+                  <span className="cifra font-medium text-tinta">{formatMoney(toMoney(pago.amount))}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Boton variante="plano" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton variante="principal" disabled={enviando || !monto} onClick={() => void guardar()}>
+            {enviando ? 'Guardando…' : 'Registrar pago'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   )
 }

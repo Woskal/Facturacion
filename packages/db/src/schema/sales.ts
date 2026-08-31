@@ -33,6 +33,16 @@ export const documentSeries = pgTable(
     kind: documentKind('kind').notNull(),
     prefix: text('prefix').notNull(),
     nextNumber: integer('next_number').notNull().default(1),
+    /**
+     * Números de control del talonario de la imprenta autorizada.
+     *
+     * No los genera el sistema: vienen preimpresos. Se guarda el rango que el
+     * negocio tiene en mano para asignarlos en orden y avisar antes de que se
+     * acaben — quedarse sin talonario es quedarse sin poder facturar.
+     */
+    controlPrefix: text('control_prefix'),
+    controlNext: integer('control_next'),
+    controlLast: integer('control_last'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

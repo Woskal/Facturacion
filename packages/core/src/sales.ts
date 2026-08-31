@@ -33,7 +33,7 @@ import {
 import { consumeReservedNumber } from './numbering'
 import { getRateFor, toIsoDate, type StoredRate } from './rates'
 
-export type DocumentKind = 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CREDITO'
+export type DocumentKind = 'FACTURA' | 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CREDITO'
 
 export interface SaleLineInput {
   /** Producto del catálogo. Si va, el precio y la alícuota salen de él. */
@@ -211,6 +211,30 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
 
     const fullNumber = `${prefix}-${String(assigned).padStart(6, '0')}`
 
+    /*
+     * Número de control del talonario de la imprenta autorizada.
+     *
+     * Solo lo lleva la factura, y solo si el negocio cargó su rango. No lo
+     * inventa el sistema: viene preimpreso en el papel, así que si el talonario
+     * se acabó la factura sale sin control y el negocio tiene que cargar el
+     * siguiente. Detener la venta por eso sería peor.
+     */
+    let controlNumber: string | null = null
+    if (kind === 'FACTURA') {
+      const asignadoControl = await tx.execute<{ numero: number | null; prefijo: string | null }>(sql`
+        UPDATE document_series
+        SET control_next = control_next + 1
+        WHERE id = ${seriesId}
+          AND control_next IS NOT NULL
+          AND (control_last IS NULL OR control_next <= control_last)
+        RETURNING control_next - 1 AS numero, control_prefix AS prefijo
+      `)
+      const fila = [...asignadoControl][0]
+      if (fila?.numero != null) {
+        controlNumber = `${fila.prefijo ?? ''}${String(fila.numero).padStart(8, '0')}`
+      }
+    }
+
     // --- Persistencia -------------------------------------------------------
     const amounts = dualizeTotals(totals, settlement, rate, input.currency)
 
@@ -222,6 +246,7 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
         seriesId,
         number: assigned,
         fullNumber,
+        controlNumber,
         stationId: input.stationId,
         cashSessionId,
         issuedByUserId: input.userId,

@@ -3,7 +3,7 @@ import { formatMoney, type Rate } from '@fve/money'
 
 import { ApiError, api, toMoney, type CashSessionJson } from '../api'
 import { aMonto } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, Tarjeta, Vacio } from '../components/ui'
 
 const NOMBRES: Record<string, string> = {
   EFECTIVO_BS: 'Efectivo Bs',
@@ -90,7 +90,13 @@ export function Caja({ stationId }: { stationId: string; rate: Rate }) {
     return (
       <div className="mx-auto max-w-md pt-10">
         <Tarjeta className="p-6 text-center">
-          <h2 className="text-lg font-semibold">Caja cerrada</h2>
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-tenue text-apagado">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="8" width="18" height="12" rx="2" />
+              <path d="M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3M7 13h4M15 13h2" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-tinta">Caja cerrada</h2>
           <p className="mt-2 text-sm text-apagado">
             Abra el turno para que las ventas queden asociadas a él y el arqueo pueda cuadrar.
           </p>
@@ -107,9 +113,12 @@ export function Caja({ stationId }: { stationId: string; rate: Rate }) {
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-4">
-      <Tarjeta className="flex items-center justify-between px-4 py-3">
-        <div>
-          <span className="block text-sm font-medium">{cerrada ? 'Turno cerrado' : 'Turno abierto'}</span>
+      <Tarjeta className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <span className="flex items-center gap-2 text-sm font-medium text-tinta">
+            <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cerrada ? 'bg-apagado' : 'bg-exito'}`} />
+            {cerrada ? 'Turno cerrado' : 'Turno abierto'}
+          </span>
           <span className="block text-xs text-apagado">
             Desde {new Date(sesion.openedAt).toLocaleString('es-VE')} · {sesion.documentCount} documento
             {sesion.documentCount === 1 ? '' : 's'}
@@ -133,12 +142,12 @@ export function Caja({ stationId }: { stationId: string; rate: Rate }) {
           <Vacio>Todavía no hay movimientos en este turno.</Vacio>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 border-b border-borde bg-white text-xs text-apagado">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Medio</th>
-                <th className="w-36 px-2 py-2 text-right font-medium">Debería haber</th>
-                <th className="w-36 px-2 py-2 text-right font-medium">Contado</th>
-                <th className="w-32 px-4 py-2 text-right font-medium">Diferencia</th>
+                <th className="px-4 py-2.5 text-left font-medium">Medio</th>
+                <th className="w-36 px-2 py-2.5 text-right font-medium">Debería haber</th>
+                <th className="w-36 px-2 py-2.5 text-right font-medium">Contado</th>
+                <th className="w-32 px-4 py-2.5 text-right font-medium">Diferencia</th>
               </tr>
             </thead>
             <tbody>
@@ -147,8 +156,8 @@ export function Caja({ stationId }: { stationId: string; rate: Rate }) {
                 const diferencia = toMoney(linea.difference)
                 return (
                   <tr key={clave} className="border-b border-borde/60 last:border-0">
-                    <td className="px-4 py-2">
-                      <span className="block font-medium">{NOMBRES[linea.method] ?? linea.method}</span>
+                    <td className="px-4 py-2.5">
+                      <span className="block font-medium text-tinta">{NOMBRES[linea.method] ?? linea.method}</span>
                       {BigInt(linea.opening.amount) > 0n ? (
                         <span className="cifra block text-xs text-apagado">
                           fondo {formatMoney(toMoney(linea.opening))}
@@ -164,7 +173,7 @@ export function Caja({ stationId }: { stationId: string; rate: Rate }) {
                           value={conteo[clave] ?? ''}
                           onChange={(e) => setConteo((actual) => ({ ...actual, [clave]: e.target.value }))}
                           placeholder="0,00"
-                          className="cifra w-full rounded border border-borde px-2 py-1 text-right outline-none focus:border-acento"
+                          className="cifra h-9 w-full rounded-lg border border-borde bg-lienzo px-2 text-right outline-none transition focus:border-acento focus:ring-2 focus:ring-acento/20"
                         />
                       )}
                     </td>

@@ -9,8 +9,11 @@ import {
   DocumentNotFoundError,
   DuplicateCustomerError,
   DuplicateSkuError,
+  DuplicateSupplierError,
   NotPlatformAdminError,
+  PurchaseNotFoundError,
   ReceivableNotFoundError,
+  SupplierNotFoundError,
   TenantAlreadyExistsError,
   TenantNotFoundError,
   UserAlreadyExistsError,
@@ -76,6 +79,8 @@ export function statusForError(error: unknown): { status: number; message: strin
     error instanceof DocumentNotFoundError ||
     error instanceof CustomerNotFoundError ||
     error instanceof ReceivableNotFoundError ||
+    error instanceof SupplierNotFoundError ||
+    error instanceof PurchaseNotFoundError ||
     error instanceof TenantNotFoundError
   ) {
     return { status: 404, message: error.message }
@@ -84,6 +89,7 @@ export function statusForError(error: unknown): { status: number; message: strin
   if (
     error instanceof DuplicateSkuError ||
     error instanceof DuplicateCustomerError ||
+    error instanceof DuplicateSupplierError ||
     error instanceof TenantAlreadyExistsError ||
     error instanceof UserAlreadyExistsError
   ) {

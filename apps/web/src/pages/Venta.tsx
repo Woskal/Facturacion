@@ -17,10 +17,21 @@ import {
   type Rate,
 } from '@fve/money'
 
-import { ApiError, api, fromMoney, toMoney, type ProductJson, type SaleResponse } from '../api'
+import {
+  ApiError,
+  api,
+  fromMoney,
+  toMoney,
+  type CustomerJson,
+  type DocumentKind,
+  type FullDocumentJson,
+  type ProductJson,
+  type SaleResponse,
+} from '../api'
 import { buscarLocal, encolarVenta, tomarNumero } from '../local'
 import { aMilesimas, aMonto, cantidad } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, Campo, Insignia, Segmentado, Tarjeta, Vacio } from '../components/ui'
+import { VisorDocumento } from '../components/DocumentoImprimible'
 
 interface LineaCarrito {
   readonly clave: string
@@ -74,7 +85,16 @@ export function Venta({
   const [error, setError] = useState<string | null>(null)
   const [emitida, setEmitida] = useState<SaleResponse | null>(null)
   const [cobrando, setCobrando] = useState(false)
+  const [kind, setKind] = useState<DocumentKind>('NOTA_ENTREGA')
+  const [cliente, setCliente] = useState<CustomerJson | null>(null)
+  const [imprimible, setImprimible] = useState<FullDocumentJson | null>(null)
   const buscador = useRef<HTMLInputElement>(null)
+
+  // Sin conexión solo se emite nota de entrega: la factura necesita su número de
+  // control, que se asigna en el servidor, y el presupuesto no se cobra en caja.
+  useEffect(() => {
+    if (!enLinea && kind !== 'NOTA_ENTREGA') setKind('NOTA_ENTREGA')
+  }, [enLinea, kind])
 
   // Búsqueda con retardo. Un lector de código de barras teclea muy rápido y
   // termina en Enter, así que también cae aquí sin tratamiento especial.
@@ -213,10 +233,13 @@ export function Venta({
         const venta = await api.post<SaleResponse>('/sales', {
           stationId,
           currency: 'USD',
+          kind,
+          ...(cliente ? { customerId: cliente.customerId } : {}),
           lines: lineas,
           payments: pagosCuerpo,
         })
         setEmitida(venta)
+        setCliente(null)
       } else {
         const asignado = await tomarNumero(tenantId)
         if (!asignado) {
@@ -267,41 +290,59 @@ export function Venta({
     }
   }
 
+  /** Trae el documento emitido y lo abre para imprimir. */
+  async function imprimir(documentId: string) {
+    try {
+      const full = await api.get<{ document: FullDocumentJson }>(`/documents/${documentId}`)
+      setImprimible(full.document)
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo abrir el documento para imprimir.')
+    }
+  }
+
   return (
     <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[1fr_420px]">
       {/* --- Izquierda: búsqueda y carrito --- */}
       <div className="flex min-h-0 flex-col gap-4">
-        <Tarjeta className="relative p-3">
-          <input
-            ref={buscador}
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            onKeyDown={teclaEnBuscador}
-            placeholder="Escanee o escriba nombre, código o código de barras…"
-            autoFocus
-            className="w-full rounded-lg border border-borde bg-white px-4 py-3 text-base outline-none focus:border-acento focus:ring-2 focus:ring-acento/20"
-          />
+        <Tarjeta className="relative p-2">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-apagado">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+            </span>
+            <input
+              ref={buscador}
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              onKeyDown={teclaEnBuscador}
+              placeholder="Escanee o escriba nombre, código o código de barras…"
+              autoFocus
+              className="w-full rounded-lg border border-borde bg-lienzo py-3 pl-11 pr-4 text-base outline-none transition focus:border-acento focus:ring-2 focus:ring-acento/20"
+            />
+          </div>
 
           {resultados.length > 0 ? (
-            <ul className="absolute inset-x-3 top-full z-20 mt-1 max-h-80 overflow-auto rounded-lg border border-borde bg-white shadow-lg">
+            <ul className="surgir absolute inset-x-2 top-full z-20 mt-1 max-h-80 overflow-auto rounded-xl border border-borde bg-lienzo p-1 shadow-flotante">
               {resultados.map((producto, indice) => (
                 <li key={producto.productId}>
                   <button
                     onMouseEnter={() => setResaltado(indice)}
                     onClick={() => agregar(producto)}
-                    className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left ${
-                      indice === resaltado ? 'bg-acento/10' : ''
+                    className={`flex w-full items-center justify-between gap-4 rounded-lg px-3 py-2 text-left transition ${
+                      indice === resaltado ? 'bg-acento-tenue' : 'hover:bg-tenue'
                     }`}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{producto.name}</span>
-                      <span className="block text-xs text-apagado">
+                      <span className="block truncate text-sm font-medium text-tinta">{producto.name}</span>
+                      <span className="cifra block text-xs text-apagado">
                         {producto.sku}
                         {producto.tracksStock ? ` · existencia ${cantidad(BigInt(producto.stock))}` : ''}
                       </span>
                     </span>
                     <span className="cifra shrink-0 text-right text-sm">
-                      <span className="block font-medium">
+                      <span className="block font-medium text-tinta">
                         {formatMoney(convert(toMoney(producto.price), 'VES', rate))}
                       </span>
                       <span className="block text-xs text-apagado">{formatMoney(toMoney(producto.price))}</span>
@@ -319,11 +360,11 @@ export function Venta({
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 border-b border-borde bg-white text-xs text-apagado">
+                <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium">Producto</th>
-                    <th className="w-28 px-2 py-2 text-right font-medium">Cantidad</th>
-                    <th className="w-40 px-4 py-2 text-right font-medium">Importe</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Producto</th>
+                    <th className="w-28 px-2 py-2.5 text-right font-medium">Cantidad</th>
+                    <th className="w-40 px-4 py-2.5 text-right font-medium">Importe</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -336,13 +377,13 @@ export function Venta({
                     )
                     return (
                       <tr key={linea.clave} className="border-b border-borde/60 last:border-0">
-                        <td className="px-4 py-2">
-                          <span className="block font-medium">{linea.producto.name}</span>
+                        <td className="px-4 py-2.5">
+                          <span className="block font-medium text-tinta">{linea.producto.name}</span>
                           <span className="cifra block text-xs text-apagado">
                             {formatMoney(convert(precioUsd, 'VES', rate))} c/u
                           </span>
                         </td>
-                        <td className="px-2 py-2">
+                        <td className="px-2 py-2.5">
                           <input
                             value={cantidad(linea.cantidad)}
                             onChange={(e) => {
@@ -354,22 +395,24 @@ export function Venta({
                                 ),
                               )
                             }}
-                            className="cifra w-full rounded border border-borde px-2 py-1 text-right outline-none focus:border-acento"
+                            className="cifra h-9 w-full rounded-lg border border-borde bg-lienzo px-2 text-right outline-none transition focus:border-acento focus:ring-2 focus:ring-acento/20"
                           />
                         </td>
-                        <td className="cifra px-4 py-2 text-right">
-                          <span className="block font-medium">{formatMoney(convert(importe, 'VES', rate))}</span>
+                        <td className="cifra px-4 py-2.5 text-right">
+                          <span className="block font-medium text-tinta">{formatMoney(convert(importe, 'VES', rate))}</span>
                           <span className="block text-xs text-apagado">{formatMoney(importe)}</span>
                         </td>
-                        <td className="px-2 py-2 text-right">
+                        <td className="px-2 py-2.5 text-right">
                           <button
                             onClick={() =>
                               setCarrito((actual) => actual.filter((otra) => otra.clave !== linea.clave))
                             }
-                            className="rounded px-2 py-1 text-apagado hover:bg-error/10 hover:text-error"
-                            title="Quitar"
+                            className="rounded-lg p-1.5 text-apagado transition hover:bg-error-tenue hover:text-error"
+                            aria-label="Quitar"
                           >
-                            ×
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                              <path d="M18 6 6 18M6 6l12 12" />
+                            </svg>
                           </button>
                         </td>
                       </tr>
@@ -382,8 +425,16 @@ export function Venta({
         </Tarjeta>
       </div>
 
-      {/* --- Derecha: totales y cobro --- */}
+      {/* --- Derecha: documento, totales y cobro --- */}
       <div className="flex min-h-0 flex-col gap-4">
+        <SelectorDocumento
+          kind={kind}
+          onKind={setKind}
+          cliente={cliente}
+          onCliente={setCliente}
+          enLinea={enLinea}
+        />
+
         <Tarjeta className="p-4">
           <div className="flex items-baseline justify-between text-sm text-apagado">
             <span>Base imponible</span>
@@ -434,17 +485,25 @@ export function Venta({
         {error ? <Aviso>{error}</Aviso> : null}
 
         {emitida ? (
-          <Aviso tipo="exito">
-            {enLinea ? 'Emitida' : 'Guardada para subir'} {emitida.fullNumber}
-            {BigInt(emitida.settlement.change.amount) > 0n
-              ? ` · vuelto ${formatMoney(toMoney(emitida.settlement.change))}`
-              : ''}
-          </Aviso>
+          <div className="space-y-2">
+            <Aviso tipo="exito">
+              {enLinea ? 'Emitida' : 'Guardada para subir'} {emitida.fullNumber}
+              {BigInt(emitida.settlement.change.amount) > 0n
+                ? ` · vuelto ${formatMoney(toMoney(emitida.settlement.change))}`
+                : ''}
+            </Aviso>
+            {emitida.documentId ? (
+              <Boton variante="normal" className="w-full" onClick={() => void imprimir(emitida.documentId)}>
+                Imprimir documento
+              </Boton>
+            ) : null}
+          </div>
         ) : null}
 
         <Boton
           variante="principal"
-          className="py-4 text-base"
+          tamano="xl"
+          className="w-full text-base font-semibold"
           disabled={carrito.length === 0 || restante.amount !== 0n || cobrando}
           onClick={() => void cobrar()}
         >
@@ -459,7 +518,121 @@ export function Venta({
                 : 'Cobrar'}
         </Boton>
       </div>
+
+      {imprimible ? <VisorDocumento documento={imprimible} onCerrar={() => setImprimible(null)} /> : null}
     </div>
+  )
+}
+
+const TIPOS_DOC: { valor: DocumentKind; nombre: string }[] = [
+  { valor: 'NOTA_ENTREGA', nombre: 'Nota de entrega' },
+  { valor: 'FACTURA', nombre: 'Factura' },
+  { valor: 'PRESUPUESTO', nombre: 'Presupuesto' },
+]
+
+/**
+ * Elige el tipo de documento y el cliente antes de cobrar.
+ *
+ * Sin conexión el tipo queda fijo en nota de entrega. La factura pide cliente
+ * —una factura a «consumidor final» se permite, pero se avisa— porque el nombre
+ * y el RIF del cliente son la mitad de una factura.
+ */
+function SelectorDocumento({
+  kind,
+  onKind,
+  cliente,
+  onCliente,
+  enLinea,
+}: {
+  kind: DocumentKind
+  onKind: (valor: DocumentKind) => void
+  cliente: CustomerJson | null
+  onCliente: (cliente: CustomerJson | null) => void
+  enLinea: boolean
+}) {
+  const [busqueda, setBusqueda] = useState('')
+  const [resultados, setResultados] = useState<CustomerJson[]>([])
+  const [abierto, setAbierto] = useState(false)
+
+  useEffect(() => {
+    if (!abierto) return
+    const termino = busqueda.trim()
+    const t = setTimeout(() => {
+      void api
+        .get<{ customers: CustomerJson[] }>(`/customers?q=${encodeURIComponent(termino)}&limit=8`)
+        .then((d) => setResultados(d.customers))
+        .catch(() => setResultados([]))
+    }, 150)
+    return () => clearTimeout(t)
+  }, [busqueda, abierto])
+
+  return (
+    <Tarjeta className="space-y-3 p-3">
+      <Segmentado
+        valor={kind}
+        onCambio={onKind}
+        opciones={enLinea ? TIPOS_DOC : [{ valor: 'NOTA_ENTREGA', nombre: 'Nota de entrega' }]}
+        className="w-full"
+      />
+
+      <div className="relative">
+        {cliente ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-borde bg-tenue px-3 py-2">
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-tinta">{cliente.name}</span>
+              <span className="cifra block text-xs text-apagado">{cliente.id}</span>
+            </span>
+            <button
+              onClick={() => onCliente(null)}
+              aria-label="Quitar cliente"
+              className="shrink-0 rounded-md p-1 text-apagado transition hover:bg-error-tenue hover:text-error"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            onFocus={() => setAbierto(true)}
+            onBlur={() => setTimeout(() => setAbierto(false), 150)}
+            placeholder={kind === 'FACTURA' ? 'Cliente (nombre o RIF)…' : 'Cliente (opcional)…'}
+            className="h-10 w-full rounded-lg border border-borde bg-lienzo px-3 text-sm outline-none transition focus:border-acento focus:ring-2 focus:ring-acento/20"
+          />
+        )}
+
+        {abierto && !cliente && resultados.length > 0 ? (
+          <ul className="surgir absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-xl border border-borde bg-lienzo p-1 shadow-flotante">
+            {resultados.map((c) => (
+              <li key={c.customerId}>
+                <button
+                  onMouseDown={() => {
+                    onCliente(c)
+                    setBusqueda('')
+                    setResultados([])
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-tenue"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-tinta">{c.name}</span>
+                    <span className="cifra block text-xs text-apagado">{c.id}</span>
+                  </span>
+                  {c.specialTaxpayer ? <Insignia tono="acento">especial</Insignia> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      {kind === 'FACTURA' && !cliente ? (
+        <p className="text-xs text-alerta">
+          Sin cliente, la factura sale a «consumidor final».
+        </p>
+      ) : null}
+    </Tarjeta>
   )
 }
 
@@ -524,14 +697,15 @@ function PanelPagos({
 
   return (
     <Tarjeta className="flex min-h-0 flex-1 flex-col p-4">
-      <div className="flex flex-wrap gap-1">
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-apagado">Medio de pago</span>
+      <div className="flex flex-wrap gap-1.5">
         {MEDIOS.map((item) => (
           <button
             key={item.method}
             onClick={() => setMedio(item.method)}
-            className={`rounded-md border px-2.5 py-1 text-xs transition ${
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
               medio === item.method
-                ? 'border-acento bg-acento/10 font-medium text-acento'
+                ? 'border-acento bg-acento-tenue text-acento'
                 : 'border-borde text-apagado hover:text-tinta'
             }`}
           >
@@ -574,23 +748,26 @@ function PanelPagos({
         Agregar pago
       </Boton>
 
-      <ul className="mt-3 min-h-0 flex-1 space-y-1 overflow-auto">
+      <ul className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-auto">
         {pagos.map((pago) => (
           <li
             key={pago.clave}
-            className="flex items-center justify-between rounded-md bg-papel px-3 py-1.5 text-sm"
+            className="flex items-center justify-between gap-2 rounded-lg bg-tenue px-3 py-2 text-sm"
           >
-            <span>
+            <span className="min-w-0 truncate text-tinta">
               {MEDIOS.find((item) => item.method === pago.method)?.nombre}
               {pago.referencia ? <span className="text-apagado"> · {pago.referencia}</span> : null}
             </span>
-            <span className="flex items-center gap-2">
-              <span className="cifra">{formatMoney(pago.monto)}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="cifra font-medium text-tinta">{formatMoney(pago.monto)}</span>
               <button
                 onClick={() => setPagos((actual) => actual.filter((otro) => otro.clave !== pago.clave))}
-                className="text-apagado hover:text-error"
+                aria-label="Quitar pago"
+                className="rounded-md p-1 text-apagado transition hover:bg-error-tenue hover:text-error"
               >
-                ×
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
               </button>
             </span>
           </li>

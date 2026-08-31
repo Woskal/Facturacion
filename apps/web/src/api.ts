@@ -155,6 +155,129 @@ export interface SaleResponse {
   rate: { bsPerUsd: string; date: string }
 }
 
+export type DocumentKind = 'FACTURA' | 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CREDITO'
+
+export interface DocumentSummaryJson {
+  documentId: string
+  kind: DocumentKind
+  fullNumber: string
+  controlNumber: string | null
+  status: 'DRAFT' | 'ISSUED' | 'VOIDED'
+  issuedAt: string | null
+  customerName: string
+  currency: Currency
+  totalVes: MoneyJson
+  totalUsd: MoneyJson
+}
+
+export interface IssuerJson {
+  name: string
+  legalName: string | null
+  rif: string
+  rifKind: string
+  address: string | null
+  city: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  footer: string | null
+}
+
+export interface ControlBookJson {
+  seriesId: string
+  kind: DocumentKind
+  prefix: string | null
+  next: number | null
+  last: number | null
+  remaining: number
+}
+
+export interface FullDocumentJson {
+  documentId: string
+  kind: DocumentKind
+  fullNumber: string
+  controlNumber: string | null
+  status: 'DRAFT' | 'ISSUED' | 'VOIDED'
+  issuedAt: string | null
+  voidReason: string | null
+  currency: Currency
+  rateBsPerUsd: string
+  rateDate: string
+  issuer: {
+    name: string
+    legalName: string | null
+    rif: string
+    address: string | null
+    city: string | null
+    phone: string | null
+    email: string | null
+    website: string | null
+    footer: string | null
+  }
+  customer: { name: string; id: string; address: string | null; phone: string | null } | null
+  lines: {
+    lineNumber: number
+    sku: string | null
+    description: string
+    unit: string
+    quantity: string
+    unitPrice: MoneyJson
+    discountBps: number
+    taxCode: string
+    total: MoneyJson
+  }[]
+  taxes: { taxCode: string; baseBps: number; adicionalBps: number; base: MoneyJson; iva: MoneyJson }[]
+  payments: { method: string; amount: MoneyJson; reference: string | null }[]
+  totals: {
+    gross: MoneyJson
+    discount: MoneyJson
+    taxableBase: MoneyJson
+    exempt: MoneyJson
+    iva: MoneyJson
+    igtf: MoneyJson
+    total: MoneyJson
+    grandTotal: MoneyJson
+  }
+  totalOther: MoneyJson
+  notes: string | null
+  issuedBy: string
+}
+
+export interface SupplierJson {
+  supplierId: string
+  id: string
+  name: string
+  contactName: string | null
+  phone: string | null
+  email: string | null
+  purchaseCount: number
+}
+
+export interface PurchaseSummaryJson {
+  purchaseId: string
+  supplierName: string
+  invoiceNumber: string
+  controlNumber: string | null
+  occurredAt: string
+  currency: Currency
+  totalVes: MoneyJson
+  totalUsd: MoneyJson
+}
+
+export interface FullPurchaseJson {
+  purchaseId: string
+  supplier: { name: string; id: string; phone: string | null }
+  invoiceNumber: string
+  controlNumber: string | null
+  currency: Currency
+  occurredAt: string
+  net: MoneyJson
+  iva: MoneyJson
+  total: MoneyJson
+  notes: string | null
+  lines: { description: string; sku: string | null; quantity: string; unitCost: MoneyJson; lineTotal: MoneyJson }[]
+}
+
 export interface CashLineJson {
   method: string
   currency: Currency

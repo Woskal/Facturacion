@@ -113,14 +113,19 @@ export function BarraConexion({
   }
 
   const tono = !enLinea
-    ? 'border-alerta/30 bg-alerta/10 text-alerta'
+    ? 'border-alerta/30 bg-alerta-tenue text-alerta'
     : estado.pendientes > 0
-      ? 'border-acento/30 bg-acento/10 text-acento'
-      : 'border-borde bg-papel text-apagado'
+      ? 'border-acento/25 bg-acento-tenue text-acento'
+      : 'border-borde bg-tenue text-apagado'
+
+  const puntoTono = !enLinea ? 'bg-alerta' : estado.pendientes > 0 ? 'bg-acento' : 'bg-exito'
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-sm ${tono}`}>
-      <span className="font-medium">{enLinea ? 'En línea' : 'Sin conexión'}</span>
+    <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 text-sm ${tono}`}>
+      <span className="flex items-center gap-2 font-medium">
+        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${puntoTono}`} />
+        {enLinea ? 'En línea' : 'Sin conexión'}
+      </span>
 
       {!enLinea ? (
         <span>

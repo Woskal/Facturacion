@@ -3,7 +3,18 @@ import { convert, formatMoney, type Rate } from '@fve/money'
 
 import { ApiError, api, fromMoney, toMoney, type ProductJson, type TaxRateJson } from '../api'
 import { aMilesimas, aMonto, cantidad } from '../formato'
-import { Aviso, Boton, Campo, Tarjeta, Vacio } from '../components/ui'
+import {
+  Aviso,
+  Boton,
+  Campo,
+  Encabezado,
+  Insignia,
+  Modal,
+  Segmentado,
+  Select,
+  Tarjeta,
+  Vacio,
+} from '../components/ui'
 
 export function Catalogo({ rate }: { rate: Rate }) {
   const [productos, setProductos] = useState<ProductJson[]>([])
@@ -43,22 +54,21 @@ export function Catalogo({ rate }: { rate: Rate }) {
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-64 flex-1">
-          <Campo
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, código o código de barras…"
-            disabled={soloBajos}
-          />
-        </div>
+      <Encabezado titulo="Catálogo" subtitulo="Productos, precios y existencias">
         <Boton variante={soloBajos ? 'principal' : 'normal'} onClick={() => setSoloBajos((v) => !v)}>
           Por reponer{bajos > 0 && !soloBajos ? ` (${bajos})` : ''}
         </Boton>
         <Boton variante="principal" onClick={() => setCreando(true)}>
           Nuevo producto
         </Boton>
-      </div>
+      </Encabezado>
+
+      <Campo
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        placeholder="Buscar por nombre, código o código de barras…"
+        disabled={soloBajos}
+      />
 
       {error ? <Aviso>{error}</Aviso> : null}
 
@@ -67,42 +77,51 @@ export function Catalogo({ rate }: { rate: Rate }) {
           <Vacio>{soloBajos ? 'Nada por reponer.' : 'No hay productos que coincidan.'}</Vacio>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 border-b border-borde bg-white text-xs text-apagado">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Producto</th>
-                <th className="w-20 px-2 py-2 text-center font-medium">IVA</th>
-                <th className="w-36 px-2 py-2 text-right font-medium">Precio</th>
-                <th className="w-32 px-2 py-2 text-right font-medium">Existencia</th>
+                <th className="px-4 py-2.5 text-left font-medium">Producto</th>
+                <th className="w-20 px-2 py-2.5 text-center font-medium">IVA</th>
+                <th className="w-36 px-2 py-2.5 text-right font-medium">Precio</th>
+                <th className="w-32 px-2 py-2.5 text-right font-medium">Existencia</th>
                 <th className="w-24" />
               </tr>
             </thead>
             <tbody>
               {productos.map((producto) => (
-                <tr key={producto.productId} className="border-b border-borde/60 last:border-0">
-                  <td className="px-4 py-2">
-                    <span className="block font-medium">{producto.name}</span>
-                    <span className="block text-xs text-apagado">
+                <tr
+                  key={producto.productId}
+                  className="border-b border-borde/60 transition last:border-0 hover:bg-tenue/50"
+                >
+                  <td className="px-4 py-2.5">
+                    <span className="block font-medium text-tinta">{producto.name}</span>
+                    <span className="cifra block text-xs text-apagado">
                       {producto.sku}
                       {producto.barcode ? ` · ${producto.barcode}` : ''}
                     </span>
                   </td>
-                  <td className="px-2 py-2 text-center text-xs text-apagado">{producto.taxCode}</td>
-                  <td className="cifra px-2 py-2 text-right">
-                    <span className="block">{formatMoney(convert(toMoney(producto.price), 'VES', rate))}</span>
+                  <td className="px-2 py-2.5 text-center text-xs text-apagado">{producto.taxCode}</td>
+                  <td className="cifra px-2 py-2.5 text-right">
+                    <span className="block font-medium text-tinta">{formatMoney(convert(toMoney(producto.price), 'VES', rate))}</span>
                     <span className="block text-xs text-apagado">{formatMoney(toMoney(producto.price))}</span>
                   </td>
-                  <td className="cifra px-2 py-2 text-right">
+                  <td className="px-2 py-2.5 text-right">
                     {producto.tracksStock ? (
-                      <span className={producto.belowMinimum ? 'font-medium text-alerta' : ''}>
-                        {cantidad(BigInt(producto.stock))} {producto.unit}
-                      </span>
+                      producto.belowMinimum ? (
+                        <Insignia tono={BigInt(producto.stock) <= 0n ? 'error' : 'alerta'}>
+                          {cantidad(BigInt(producto.stock))} {producto.unit}
+                        </Insignia>
+                      ) : (
+                        <span className="cifra text-tinta">
+                          {cantidad(BigInt(producto.stock))} {producto.unit}
+                        </span>
+                      )
                     ) : (
-                      <span className="text-xs text-apagado">servicio</span>
+                      <Insignia>servicio</Insignia>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-2.5 text-right">
                     {producto.tracksStock ? (
-                      <Boton variante="plano" onClick={() => setAjustando(producto)}>
+                      <Boton variante="plano" tamano="sm" onClick={() => setAjustando(producto)}>
                         Ajustar
                       </Boton>
                     ) : null}
@@ -135,17 +154,6 @@ export function Catalogo({ rate }: { rate: Rate }) {
           }}
         />
       ) : null}
-    </div>
-  )
-}
-
-function Modal({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-tinta/30 p-6">
-      <Tarjeta className="w-full max-w-md p-5">
-        <h2 className="mb-4 text-lg font-semibold">{titulo}</h2>
-        {children}
-      </Tarjeta>
     </div>
   )
 }
@@ -205,7 +213,7 @@ function NuevoProducto({
   }
 
   return (
-    <Modal titulo="Nuevo producto">
+    <Modal titulo="Nuevo producto" descripcion="El precio se ancla en dólares." onCerrar={onCerrar}>
       <div className="space-y-3">
         <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         <div className="grid grid-cols-2 gap-3">
@@ -226,20 +234,13 @@ function NuevoProducto({
             className="cifra text-right"
             ayuda="El precio en Bs sale de la tasa al vender."
           />
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">IVA</span>
-            <select
-              value={taxRateId}
-              onChange={(e) => setTaxRateId(e.target.value)}
-              className="w-full rounded-lg border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-acento"
-            >
-              {alicuotas.map((alicuota) => (
-                <option key={alicuota.id} value={alicuota.id}>
-                  {alicuota.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select etiqueta="IVA" value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}>
+            {alicuotas.map((alicuota) => (
+              <option key={alicuota.id} value={alicuota.id}>
+                {alicuota.name}
+              </option>
+            ))}
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Campo
@@ -315,20 +316,20 @@ function AjustarExistencia({
   }
 
   return (
-    <Modal titulo={`Ajustar ${producto.name}`}>
-      <p className="cifra mb-4 text-sm text-apagado">
-        Existencia actual: {cantidad(BigInt(producto.stock))} {producto.unit}
+    <Modal titulo="Ajustar existencia" descripcion={producto.name} onCerrar={onCerrar}>
+      <p className="cifra mb-4 rounded-lg bg-tenue px-3 py-2 text-sm text-apagado">
+        Existencia actual: <span className="font-medium text-tinta">{cantidad(BigInt(producto.stock))} {producto.unit}</span>
       </p>
 
       <div className="space-y-3">
-        <div className="flex gap-1">
-          <Boton variante={!salida ? 'principal' : 'normal'} onClick={() => setSalida(false)}>
-            Entrada
-          </Boton>
-          <Boton variante={salida ? 'principal' : 'normal'} onClick={() => setSalida(true)}>
-            Salida
-          </Boton>
-        </div>
+        <Segmentado
+          valor={salida ? 'salida' : 'entrada'}
+          onCambio={(v) => setSalida(v === 'salida')}
+          opciones={[
+            { valor: 'entrada', nombre: 'Entrada' },
+            { valor: 'salida', nombre: 'Salida' },
+          ]}
+        />
 
         <Campo
           etiqueta="Cantidad"
