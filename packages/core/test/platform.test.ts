@@ -124,6 +124,7 @@ describe('alta de un negocio', () => {
     expect(listas).toHaveLength(1)
     expect(cajas).toHaveLength(1)
     expect(series.map((row) => row.kind).sort()).toEqual([
+      'FACTURA',
       'NOTA_CREDITO',
       'NOTA_ENTREGA',
       'PRESUPUESTO',

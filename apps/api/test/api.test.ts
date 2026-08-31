@@ -162,7 +162,8 @@ describe('el operador de la plataforma', () => {
     const body = response.json()
     expect(body.stationId).toBeTruthy()
     expect(Object.keys(body.taxRateIds).sort()).toEqual(['E', 'G', 'R', 'S'])
-    expect(Object.keys(body.seriesIds)).toHaveLength(4)
+    // Cinco series: factura, presupuesto, nota de entrega, recibo y nota de crédito.
+    expect(Object.keys(body.seriesIds)).toHaveLength(5)
   })
 
   it('un usuario de negocio no puede usar el panel', async () => {
