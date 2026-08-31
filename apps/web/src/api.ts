@@ -157,6 +157,17 @@ export interface SaleResponse {
 
 export type DocumentKind = 'FACTURA' | 'PRESUPUESTO' | 'NOTA_ENTREGA' | 'RECIBO' | 'NOTA_CREDITO'
 
+export interface CustomerHistoryJson {
+  documentId: string
+  fullNumber: string
+  kind: DocumentKind
+  status: 'DRAFT' | 'ISSUED' | 'VOIDED'
+  issuedAt: string | null
+  currency: Currency
+  totalUsd: string
+  totalVes: string
+}
+
 export interface DocumentSummaryJson {
   documentId: string
   kind: DocumentKind
@@ -310,6 +321,17 @@ export interface FullPurchaseJson {
   notes: string | null
   lines: { description: string; sku: string | null; quantity: string; unitCost: MoneyJson; lineTotal: MoneyJson }[]
   payments: { method: string | null; amount: MoneyJson; reference: string | null; occurredAt: string }[]
+}
+
+export interface ExpenseJson {
+  expenseId: string
+  category: string | null
+  description: string
+  currency: Currency
+  amount: MoneyJson
+  amountVes: MoneyJson
+  paidWith: string | null
+  occurredAt: string
 }
 
 export interface CashLineJson {

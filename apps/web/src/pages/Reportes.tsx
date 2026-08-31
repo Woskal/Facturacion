@@ -81,6 +81,7 @@ export function Reportes() {
   const [medios, setMedios] = useState<Medio[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [ganancia, setGanancia] = useState<ProfitReportJson | null>(null)
+  const [gastos, setGastos] = useState<MoneyJson | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
 
@@ -89,18 +90,20 @@ export function Reportes() {
     const rango = `from=${desde}&to=${hasta}`
 
     try {
-      const [l, d, m, p, g] = await Promise.all([
+      const [l, d, m, p, g, x] = await Promise.all([
         api.get<{ book: Libro }>(`/reports/sales-book?${rango}`),
         api.get<{ days: Dia[] }>(`/reports/daily-sales?${rango}`),
         api.get<{ methods: Medio[] }>(`/reports/by-method?${rango}`),
         api.get<{ products: Producto[] }>(`/reports/top-products?${rango}&limit=10`),
         api.get<{ report: ProfitReportJson }>(`/reports/profit?${rango}&limit=10`),
+        api.get<{ total: MoneyJson }>(`/reports/expenses-total?${rango}`),
       ])
       setLibro(l.book)
       setDias(d.days)
       setMedios(m.methods)
       setProductos(p.products)
       setGanancia(g.report)
+      setGastos(x.total)
       setError(null)
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar los reportes.')
@@ -180,6 +183,17 @@ export function Reportes() {
           valor={libro ? formatMoney(toMoney(libro.totals.baseGeneral)) : '—'}
         />
         <Resumen titulo="IVA cobrado" valor={libro ? formatMoney(toMoney(libro.totals.ivaGeneral)) : '—'} />
+        <Resumen titulo="Gastos" valor={gastos ? formatMoney(toMoney(gastos)) : '—'} />
+        <Resumen
+          titulo="Ganancia neta"
+          valor={
+            ganancia && gastos
+              ? formatMoney(money('VES', toMoney(ganancia.totals.profit).amount - toMoney(gastos).amount))
+              : '—'
+          }
+          detalle="ganancia − gastos"
+          tono="exito"
+        />
       </div>
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">

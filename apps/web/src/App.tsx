@@ -11,6 +11,7 @@ import { Caja } from './pages/Caja'
 import { Catalogo } from './pages/Catalogo'
 import { Clientes } from './pages/Clientes'
 import { Documentos } from './pages/Documentos'
+import { Gastos } from './pages/Gastos'
 import { Proveedores } from './pages/Proveedores'
 import { ElegirNegocio } from './pages/ElegirNegocio'
 import { Login } from './pages/Login'
@@ -31,6 +32,7 @@ type Seccion =
   | 'catalogo'
   | 'clientes'
   | 'proveedores'
+  | 'gastos'
   | 'caja'
   | 'reportes'
   | 'plataforma'
@@ -42,6 +44,7 @@ const SECCIONES: { clave: Seccion; nombre: string }[] = [
   { clave: 'catalogo', nombre: 'Catálogo' },
   { clave: 'clientes', nombre: 'Clientes' },
   { clave: 'proveedores', nombre: 'Proveedores' },
+  { clave: 'gastos', nombre: 'Gastos' },
   { clave: 'caja', nombre: 'Caja' },
   { clave: 'reportes', nombre: 'Reportes' },
 ]
@@ -275,6 +278,7 @@ export function App() {
 
       {seccion === 'documentos' ? <Documentos /> : null}
       {seccion === 'proveedores' ? <Proveedores /> : null}
+      {seccion === 'gastos' ? <Gastos /> : null}
       {rate && seccion === 'catalogo' ? <Catalogo rate={rate} /> : null}
       {rate && seccion === 'clientes' ? <Clientes rate={rate} /> : null}
       {seccion === 'reportes' ? <Reportes /> : null}
@@ -297,7 +301,8 @@ export function App() {
       seccion !== 'cobranza' &&
       seccion !== 'reportes' &&
       seccion !== 'documentos' &&
-      seccion !== 'proveedores' ? (
+      seccion !== 'proveedores' &&
+      seccion !== 'gastos' ? (
         <Aviso tipo="alerta">Este negocio no tiene ninguna caja configurada, así que no se puede vender.</Aviso>
       ) : null}
     </Marco>

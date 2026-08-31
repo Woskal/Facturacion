@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { convert, formatMoney, type Money, type Rate } from '@fve/money'
 
-import { ApiError, api, fromMoney, toMoney, type CustomerJson, type MoneyJson } from '../api'
+import {
+  ApiError,
+  api,
+  fromMoney,
+  toMoney,
+  type CustomerHistoryJson,
+  type CustomerJson,
+  type MoneyJson,
+} from '../api'
 import { aMonto } from '../formato'
 import {
   Aviso,
@@ -35,6 +43,14 @@ const TIPOS_ABONO = [
   { kind: 'RETENTION_ISLR', nombre: 'Retención de ISLR' },
   { kind: 'WRITE_OFF', nombre: 'Descargo' },
 ] as const
+
+const TITULOS_DOC: Record<CustomerHistoryJson['kind'], string> = {
+  FACTURA: 'Factura',
+  PRESUPUESTO: 'Presupuesto',
+  NOTA_ENTREGA: 'Nota de entrega',
+  RECIBO: 'Recibo',
+  NOTA_CREDITO: 'Nota de crédito',
+}
 
 export function Clientes({ rate }: { rate: Rate }) {
   const [clientes, setClientes] = useState<CustomerJson[]>([])
@@ -209,8 +225,16 @@ function EditarCliente({
   const [name, setName] = useState(cliente.name)
   const [phone, setPhone] = useState(cliente.phone ?? '')
   const [especial, setEspecial] = useState(cliente.specialTaxpayer)
+  const [historial, setHistorial] = useState<CustomerHistoryJson[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+
+  useEffect(() => {
+    void api
+      .get<{ documents: CustomerHistoryJson[] }>(`/customers/${cliente.customerId}/history`)
+      .then((d) => setHistorial(d.documents))
+      .catch(() => setHistorial([]))
+  }, [cliente.customerId])
 
   async function guardar() {
     setEnviando(true)
@@ -230,7 +254,7 @@ function EditarCliente({
   }
 
   return (
-    <Modal titulo="Editar cliente" descripcion={cliente.id} onCerrar={onCerrar}>
+    <Modal titulo="Ficha del cliente" descripcion={cliente.id} onCerrar={onCerrar} ancho="lg">
       <div className="space-y-3">
         <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         <Campo etiqueta="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="opcional" />
@@ -241,6 +265,36 @@ function EditarCliente({
             <span className="block text-xs text-apagado">Retiene IVA al pagar.</span>
           </span>
         </label>
+
+        {/* Historial de documentos del cliente. */}
+        <div>
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-apagado">Historial</span>
+          {historial === null ? (
+            <p className="text-sm text-apagado">Cargando…</p>
+          ) : historial.length === 0 ? (
+            <p className="rounded-lg bg-tenue px-3 py-2 text-sm text-apagado">Todavía no tiene documentos.</p>
+          ) : (
+            <ul className="max-h-52 space-y-1 overflow-auto">
+              {historial.map((doc) => (
+                <li key={doc.documentId} className="flex items-center justify-between gap-2 rounded-lg bg-tenue px-3 py-1.5 text-sm">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Insignia tono={doc.kind === 'FACTURA' ? 'acento' : 'neutro'}>{TITULOS_DOC[doc.kind]}</Insignia>
+                    <span className="cifra truncate text-tinta">{doc.fullNumber}</span>
+                    {doc.status === 'VOIDED' ? <Insignia tono="error">anulado</Insignia> : null}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="cifra text-xs text-apagado">
+                      {doc.issuedAt ? new Date(doc.issuedAt).toLocaleDateString('es-VE') : '—'}
+                    </span>
+                    <span className="cifra font-medium text-tinta">
+                      {formatMoney(toMoney({ currency: 'VES', amount: doc.totalVes }))}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {error ? <Aviso>{error}</Aviso> : null}
 

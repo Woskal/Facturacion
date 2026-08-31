@@ -89,6 +89,14 @@ export const iconos: Record<string, ReactNode> = {
       <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </Svg>
   ),
+  // Gastos: billete saliente.
+  gastos: (
+    <Svg>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M2 10h3M19 14h3" />
+    </Svg>
+  ),
   // Cobranza: billete.
   cobranza: (
     <Svg>

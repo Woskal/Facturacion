@@ -9,11 +9,13 @@ import {
   archiveSupplier,
   closeCashSession,
   createCustomer,
+  createExpense,
   createProduct,
   createPurchase,
   createSale,
   createSupplier,
   dailySales,
+  expensesTotal,
   fetchBcvRate,
   customerHistory,
   getCashSessionSummary,
@@ -23,6 +25,7 @@ import {
   getPurchase,
   getRateFor,
   listControlBooks,
+  listExpenses,
   listPayables,
   listPurchases,
   listRates,
@@ -230,6 +233,13 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     return reply.send({
       report: await profitReport(db, { tenantId: ctx.activeTenantId, ...rango, limit: query.limit }),
     })
+  })
+
+  /** Total de gastos del período, para restarlo a la ganancia bruta. */
+  app.get('/reports/expenses-total', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ total: await expensesTotal(db, { tenantId: ctx.activeTenantId, ...rango }) })
   })
 
   // --- Catálogo -------------------------------------------------------------
@@ -802,6 +812,37 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
       ...body,
     })
     return reply.status(201).send(result)
+  })
+
+  // --- Gastos ---------------------------------------------------------------
+
+  app.get('/expenses', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z
+      .object({
+        from: isoDateSchema.optional(),
+        to: isoDateSchema.optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      })
+      .parse(request.query)
+    return reply.send({ expenses: await listExpenses(db, { tenantId: ctx.activeTenantId, ...query }) })
+  })
+
+  app.post('/expenses', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const body = z
+      .object({
+        categoryName: z.string().optional(),
+        description: z.string().min(1),
+        currency: currencySchema,
+        amount: moneySchema,
+        paidWith: paymentMethodSchema.optional(),
+        reference: z.string().optional(),
+      })
+      .parse(request.body)
+
+    const created = await createExpense(db, { tenantId: ctx.activeTenantId, userId: ctx.userId, ...body })
+    return reply.status(201).send(created)
   })
 
   // --- Caja -----------------------------------------------------------------
