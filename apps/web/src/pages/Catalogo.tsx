@@ -24,6 +24,7 @@ export function Catalogo({ rate }: { rate: Rate }) {
   const [error, setError] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
   const [ajustando, setAjustando] = useState<ProductJson | null>(null)
+  const [editando, setEditando] = useState<ProductJson | null>(null)
 
   const cargar = useCallback(async () => {
     try {
@@ -120,11 +121,16 @@ export function Catalogo({ rate }: { rate: Rate }) {
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right">
-                    {producto.tracksStock ? (
-                      <Boton variante="plano" tamano="sm" onClick={() => setAjustando(producto)}>
-                        Ajustar
+                    <div className="flex justify-end gap-1">
+                      <Boton variante="plano" tamano="sm" onClick={() => setEditando(producto)}>
+                        Editar
                       </Boton>
-                    ) : null}
+                      {producto.tracksStock ? (
+                        <Boton variante="plano" tamano="sm" onClick={() => setAjustando(producto)}>
+                          Ajustar
+                        </Boton>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -154,7 +160,108 @@ export function Catalogo({ rate }: { rate: Rate }) {
           }}
         />
       ) : null}
+
+      {editando ? (
+        <EditarProducto
+          producto={editando}
+          alicuotas={alicuotas}
+          onCerrar={() => setEditando(null)}
+          onGuardado={() => {
+            setEditando(null)
+            void cargar()
+          }}
+        />
+      ) : null}
     </div>
+  )
+}
+
+function EditarProducto({
+  producto,
+  alicuotas,
+  onCerrar,
+  onGuardado,
+}: {
+  producto: ProductJson
+  alicuotas: TaxRateJson[]
+  onCerrar: () => void
+  onGuardado: () => void
+}) {
+  const [name, setName] = useState(producto.name)
+  const [barcode, setBarcode] = useState(producto.barcode ?? '')
+  const [precio, setPrecio] = useState(formatMoney(toMoney(producto.price), { symbol: false }))
+  const [taxRateId, setTaxRateId] = useState(
+    (alicuotas.find((a) => a.code === producto.taxCode) ?? alicuotas[0])?.id ?? '',
+  )
+  const [minimo, setMinimo] = useState(cantidad(BigInt(producto.minStock)))
+  const [error, setError] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
+
+  async function guardar() {
+    const monto = aMonto(precio, 'USD')
+    if (!monto) {
+      setError('El precio no se entiende. Escriba por ejemplo 1,50.')
+      return
+    }
+    setEnviando(true)
+    setError(null)
+    try {
+      await api.patch(`/products/${producto.productId}`, {
+        name: name.trim(),
+        barcode: barcode.trim() || null,
+        price: fromMoney(monto),
+        ...(taxRateId ? { taxRateId } : {}),
+        ...(aMilesimas(minimo) !== null ? { minStock: aMilesimas(minimo)!.toString() } : {}),
+      })
+      onGuardado()
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo guardar el producto.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <Modal titulo="Editar producto" descripcion={producto.sku} onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <Campo etiqueta="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="opcional" />
+        <div className="grid grid-cols-2 gap-3">
+          <Campo
+            etiqueta="Precio en dólares"
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+            className="cifra text-right"
+          />
+          <Select etiqueta="IVA" value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}>
+            {alicuotas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {producto.tracksStock ? (
+          <Campo
+            etiqueta="Mínimo para avisar"
+            value={minimo}
+            onChange={(e) => setMinimo(e.target.value)}
+            className="cifra text-right"
+          />
+        ) : null}
+
+        {error ? <Aviso>{error}</Aviso> : null}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Boton variante="plano" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton variante="principal" disabled={enviando || name.trim() === ''} onClick={() => void guardar()}>
+            {enviando ? 'Guardando…' : 'Guardar'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

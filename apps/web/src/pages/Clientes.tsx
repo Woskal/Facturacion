@@ -42,6 +42,7 @@ export function Clientes({ rate }: { rate: Rate }) {
   const [busqueda, setBusqueda] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
+  const [editando, setEditando] = useState<CustomerJson | null>(null)
   const [abonando, setAbonando] = useState<ReceivableJson | null>(null)
 
   const cargar = useCallback(async () => {
@@ -97,7 +98,8 @@ export function Clientes({ rate }: { rate: Rate }) {
                 {clientes.map((cliente) => (
                   <li
                     key={cliente.customerId}
-                    className="flex items-center justify-between gap-3 border-b border-borde/60 px-4 py-2.5 text-sm transition last:border-0 hover:bg-tenue/50"
+                    onClick={() => setEditando(cliente)}
+                    className="flex cursor-pointer items-center justify-between gap-3 border-b border-borde/60 px-4 py-2.5 text-sm transition last:border-0 hover:bg-tenue/60"
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-medium text-tinta">{cliente.name}</span>
@@ -169,6 +171,17 @@ export function Clientes({ rate }: { rate: Rate }) {
         />
       ) : null}
 
+      {editando ? (
+        <EditarCliente
+          cliente={editando}
+          onCerrar={() => setEditando(null)}
+          onGuardado={() => {
+            setEditando(null)
+            void cargar()
+          }}
+        />
+      ) : null}
+
       {abonando ? (
         <Abonar
           fila={abonando}
@@ -181,6 +194,66 @@ export function Clientes({ rate }: { rate: Rate }) {
         />
       ) : null}
     </div>
+  )
+}
+
+function EditarCliente({
+  cliente,
+  onCerrar,
+  onGuardado,
+}: {
+  cliente: CustomerJson
+  onCerrar: () => void
+  onGuardado: () => void
+}) {
+  const [name, setName] = useState(cliente.name)
+  const [phone, setPhone] = useState(cliente.phone ?? '')
+  const [especial, setEspecial] = useState(cliente.specialTaxpayer)
+  const [error, setError] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
+
+  async function guardar() {
+    setEnviando(true)
+    setError(null)
+    try {
+      await api.patch(`/customers/${cliente.customerId}`, {
+        name: name.trim(),
+        phone: phone.trim() || null,
+        specialTaxpayer: especial,
+      })
+      onGuardado()
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo guardar el cliente.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <Modal titulo="Editar cliente" descripcion={cliente.id} onCerrar={onCerrar}>
+      <div className="space-y-3">
+        <Campo etiqueta="Nombre" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <Campo etiqueta="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="opcional" />
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={especial} onChange={(e) => setEspecial(e.target.checked)} className="mt-1" />
+          <span>
+            Contribuyente especial
+            <span className="block text-xs text-apagado">Retiene IVA al pagar.</span>
+          </span>
+        </label>
+
+        {error ? <Aviso>{error}</Aviso> : null}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Boton variante="plano" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton variante="principal" disabled={enviando || name.trim() === ''} onClick={() => void guardar()}>
+            {enviando ? 'Guardando…' : 'Guardar'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

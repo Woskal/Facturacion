@@ -518,3 +518,55 @@ describe('el pasado no se reescribe', () => {
     expect(despues?.totalVes).toBe(antes?.totalVes)
   })
 })
+
+describe('presupuesto', () => {
+  beforeEach(async () => {
+    // seedNegocio solo crea la serie de nota de entrega; el presupuesto usa la suya.
+    await withTenant(db, negocio.tenantId, (tx) =>
+      tx
+        .insert(schema.documentSeries)
+        .values({ tenantId: negocio.tenantId, kind: 'PRESUPUESTO', prefix: 'PR', nextNumber: 1 }),
+    )
+  })
+
+  it('se emite sin cobrar y sin descontar inventario', async () => {
+    const antes = await stockOf(db, negocio.tenantId, negocio.harina)
+
+    const presupuesto = await createSale(db, {
+      tenantId: negocio.tenantId,
+      stationId: negocio.stationId,
+      userId: negocio.userId,
+      kind: 'PRESUPUESTO',
+      currency: 'USD',
+      lines: [{ productId: negocio.harina, quantity: 2000n }],
+      payments: [], // una cotización no se paga
+      now: AHORA,
+    })
+
+    expect(presupuesto.fullNumber).toBe('PR-000001')
+    expect(presupuesto.totals.total.amount).toBe(300n)
+
+    const [doc] = await withTenant(db, negocio.tenantId, (tx) =>
+      tx.select().from(schema.documents).where(eq(schema.documents.id, presupuesto.documentId)),
+    )
+    expect(doc?.status).toBe('ISSUED')
+
+    // El inventario no se movió: sigue igual que antes.
+    const despues = await stockOf(db, negocio.tenantId, negocio.harina)
+    expect(despues).toBe(antes)
+  })
+
+  it('una nota de entrega sin pago sigue exigiendo saldar', async () => {
+    await expect(
+      createSale(db, {
+        tenantId: negocio.tenantId,
+        stationId: negocio.stationId,
+        userId: negocio.userId,
+        currency: 'USD',
+        lines: [{ productId: negocio.harina, quantity: 2000n }],
+        payments: [],
+        now: AHORA,
+      }),
+    ).rejects.toThrow(UnsettledSaleError)
+  })
+})

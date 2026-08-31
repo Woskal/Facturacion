@@ -111,6 +111,12 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
 
   const now = input.now ?? new Date()
   const kind: DocumentKind = input.kind ?? 'NOTA_ENTREGA'
+  /*
+   * Un presupuesto es una cotización, no una venta: se numera y se imprime con
+   * sus precios, pero no se cobra, no descuenta inventario ni abre cuenta por
+   * cobrar. Por eso se ignoran sus pagos y no se exige que quede saldado.
+   */
+  const esCotizacion = kind === 'PRESUPUESTO'
   const rate = await getRateFor(db, input.tenantId, toIsoDate(now))
 
   return withTenant(db, input.tenantId, async (tx) => {
@@ -151,13 +157,13 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
     // --- Cobro --------------------------------------------------------------
     const settlement = settle({
       total: totals.total,
-      payments: input.payments,
+      payments: esCotizacion ? [] : input.payments,
       rate,
       igtfBps,
       ...(input.changeCurrency !== undefined ? { changeCurrency: input.changeCurrency } : {}),
     })
 
-    if (isPositive(settlement.balance)) {
+    if (!esCotizacion && isPositive(settlement.balance)) {
       throw new UnsettledSaleError(toDecimalString(settlement.balance))
     }
     if (isPositive(settlement.credit) && !input.customerId) {
@@ -335,7 +341,8 @@ export async function createSale(db: Database, input: CreateSaleInput): Promise<
     await tx.update(schema.documents).set({ status: 'ISSUED', issuedAt: now }).where(eq(schema.documents.id, documentId))
 
     // --- Inventario ---------------------------------------------------------
-    const stockLines = resolved.filter((line) => line.tracksStock && line.productId)
+    // Un presupuesto no mueve inventario: es una cotización, no una salida.
+    const stockLines = esCotizacion ? [] : resolved.filter((line) => line.tracksStock && line.productId)
     if (stockLines.length > 0) {
       await tx.insert(schema.stockMovements).values(
         stockLines.map((line) => ({

@@ -152,7 +152,9 @@ export function Documentos() {
         )}
       </Tarjeta>
 
-      {abierto ? <VisorDocumento documento={abierto} onCerrar={() => setAbierto(null)} /> : null}
+      {abierto ? (
+        <VisorDocumento documento={abierto} onCerrar={() => setAbierto(null)} onAnulado={() => void cargar()} />
+      ) : null}
       {config === 'emisor' ? <ConfigEmisor onCerrar={() => setConfig(null)} /> : null}
       {config === 'talonario' ? <ConfigTalonario onCerrar={() => setConfig(null)} /> : null}
     </div>

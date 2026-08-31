@@ -206,6 +206,8 @@ export function Venta({
 
   const totalBs = convert(totales.total, 'VES', rate)
   const restante = liquidacion ? liquidacion.balance : totales.total
+  // Un presupuesto es una cotización: se emite sin cobrar.
+  const esPresupuesto = kind === 'PRESUPUESTO'
 
   /**
    * Cobra la venta.
@@ -236,7 +238,7 @@ export function Venta({
           kind,
           ...(cliente ? { customerId: cliente.customerId } : {}),
           lines: lineas,
-          payments: pagosCuerpo,
+          payments: esPresupuesto ? [] : pagosCuerpo,
         })
         setEmitida(venta)
         setCliente(null)
@@ -473,14 +475,21 @@ export function Venta({
           </div>
         </Tarjeta>
 
-        <PanelPagos
-          rate={rate}
-          totales={totales.total}
-          pagos={pagos}
-          setPagos={setPagos}
-          restante={restante}
-          cambio={liquidacion?.change ?? zero('USD')}
-        />
+        {esPresupuesto ? (
+          <Tarjeta className="p-4 text-sm text-apagado">
+            Un presupuesto es una cotización: se emite sin cobrar y no descuenta inventario. Agregue los
+            productos y emítalo.
+          </Tarjeta>
+        ) : (
+          <PanelPagos
+            rate={rate}
+            totales={totales.total}
+            pagos={pagos}
+            setPagos={setPagos}
+            restante={restante}
+            cambio={liquidacion?.change ?? zero('USD')}
+          />
+        )}
 
         {error ? <Aviso>{error}</Aviso> : null}
 
@@ -504,7 +513,7 @@ export function Venta({
           variante="principal"
           tamano="xl"
           className="w-full text-base font-semibold"
-          disabled={carrito.length === 0 || restante.amount !== 0n || cobrando}
+          disabled={carrito.length === 0 || cobrando || (!esPresupuesto && restante.amount !== 0n)}
           onClick={() => void cobrar()}
         >
           {cobrando
@@ -513,9 +522,11 @@ export function Venta({
               : 'Guardando…'
             : carrito.length === 0
               ? 'Sin productos'
-              : restante.amount !== 0n
-                ? `Falta ${formatMoney(convert(restante, 'VES', rate))}`
-                : 'Cobrar'}
+              : esPresupuesto
+                ? 'Emitir presupuesto'
+                : restante.amount !== 0n
+                  ? `Falta ${formatMoney(convert(restante, 'VES', rate))}`
+                  : 'Cobrar'}
         </Boton>
       </div>
 

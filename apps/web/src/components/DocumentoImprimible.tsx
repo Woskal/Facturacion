@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { formatMoney, formatRate, rate as makeRate } from '@fve/money'
 
-import { toMoney, type FullDocumentJson, type MoneyJson } from '../api'
+import { ApiError, api, toMoney, type FullDocumentJson, type MoneyJson } from '../api'
 import { cantidad } from '../formato'
-import { Boton, Segmentado } from './ui'
+import { Aviso, Boton, Campo, Modal, Segmentado } from './ui'
 
 /**
  * Documento imprimible.
@@ -52,11 +52,35 @@ function fecha(iso: string | null): string {
 export function VisorDocumento({
   documento,
   onCerrar,
+  onAnulado,
 }: {
   documento: FullDocumentJson
   onCerrar: () => void
+  /** Si va, se muestra el botón de anular; se llama tras anular con éxito. */
+  onAnulado?: (() => void) | undefined
 }) {
   const [formato, setFormato] = useState<'carta' | 'ticket'>(documento.kind === 'FACTURA' ? 'carta' : 'ticket')
+  const [anulando, setAnulando] = useState(false)
+  const [razon, setRazon] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const emitido = documento.status === 'ISSUED'
+
+  async function anular() {
+    setEnviando(true)
+    setError(null)
+    try {
+      await api.post(`/sales/${documento.documentId}/void`, { reason: razon.trim() })
+      setAnulando(false)
+      onAnulado?.()
+      onCerrar()
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo anular el documento.')
+    } finally {
+      setEnviando(false)
+    }
+  }
 
   return (
     <div className="atenuar fixed inset-0 z-40 flex flex-col bg-tinta/80">
@@ -78,6 +102,11 @@ export function VisorDocumento({
               { valor: 'ticket', nombre: 'Ticket' },
             ]}
           />
+          {onAnulado && emitido ? (
+            <Boton variante="peligro" onClick={() => setAnulando(true)}>
+              Anular
+            </Boton>
+          ) : null}
           <Boton variante="principal" onClick={() => window.print()}>
             Imprimir
           </Boton>
@@ -90,6 +119,37 @@ export function VisorDocumento({
       <div className="flex-1 overflow-auto p-4 sm:p-8">
         {formato === 'carta' ? <Carta d={documento} /> : <Ticket d={documento} />}
       </div>
+
+      {anulando ? (
+        <Modal
+          titulo="Anular documento"
+          descripcion={`${TITULOS[documento.kind]} ${documento.fullNumber}`}
+          onCerrar={() => setAnulando(false)}
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-apagado">
+              Anular conserva el documento y su número, pero lo deja en cero en el libro. No se borra y no se
+              puede deshacer.
+            </p>
+            <Campo
+              etiqueta="Motivo de la anulación"
+              value={razon}
+              onChange={(e) => setRazon(e.target.value)}
+              placeholder="Error en la venta, devolución…"
+              autoFocus
+            />
+            {error ? <Aviso>{error}</Aviso> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Boton variante="plano" onClick={() => setAnulando(false)}>
+                Cancelar
+              </Boton>
+              <Boton variante="peligro" disabled={enviando || razon.trim() === ''} onClick={() => void anular()}>
+                {enviando ? 'Anulando…' : 'Anular documento'}
+              </Boton>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
