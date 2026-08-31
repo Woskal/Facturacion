@@ -34,6 +34,13 @@ export class EmptyPurchaseError extends CoreError {
   }
 }
 
+export class PurchaseOverpaidError extends CoreError {
+  override readonly name = 'PurchaseOverpaidError'
+  constructor(readonly pending: string) {
+    super(`El pago excede el saldo por pagar, que es ${pending}.`)
+  }
+}
+
 // --- Proveedores ------------------------------------------------------------
 
 export interface CreateSupplierInput {
@@ -200,6 +207,9 @@ export interface CreatePurchaseInput {
   readonly currency: Currency
   /** IVA de la factura del proveedor, tal como lo trae. Cero si no discrimina. */
   readonly iva: Money
+  /** Lo que se pagó en el acto. Cero o vacío = queda a crédito por el total. */
+  readonly paidNow?: Money | undefined
+  readonly paidMethod?: string | undefined
   readonly notes?: string | undefined
   readonly lines: readonly PurchaseLineInput[]
   readonly now?: Date | undefined
@@ -300,6 +310,24 @@ export async function createPurchase(
       }
     }
 
+    // Pago de contado, si lo hubo: entra como un abono más, así el saldo por
+    // pagar sale siempre de restar los abonos al total.
+    if (input.paidNow && input.paidNow.amount > 0n) {
+      await tx.insert(schema.purchasePayments).values({
+        tenantId: input.tenantId,
+        purchaseId: purchase.id,
+        currency: input.paidNow.currency,
+        amount: input.paidNow.amount,
+        amountUsd: convert(input.paidNow, 'USD', rate).amount,
+        amountVes: convert(input.paidNow, 'VES', rate).amount,
+        exchangeRateId: rate.id,
+        rateBsPerUsd: rate.bsPerUsd,
+        method: (input.paidMethod as never) ?? null,
+        occurredAt: now,
+        createdByUserId: input.userId,
+      })
+    }
+
     await tx.insert(schema.auditLog).values({
       tenantId: input.tenantId,
       actorUserId: input.userId,
@@ -379,6 +407,8 @@ export interface FullPurchase {
   readonly net: Money
   readonly iva: Money
   readonly total: Money
+  readonly paid: Money
+  readonly balance: Money
   readonly notes: string | null
   readonly lines: readonly {
     description: string
@@ -386,6 +416,12 @@ export interface FullPurchase {
     quantity: bigint
     unitCost: Money
     lineTotal: Money
+  }[]
+  readonly payments: readonly {
+    method: string | null
+    amount: Money
+    reference: string | null
+    occurredAt: Date
   }[]
 }
 
@@ -421,8 +457,25 @@ export async function getPurchase(
       .leftJoin(schema.products, eq(schema.products.id, schema.purchaseLines.productId))
       .where(eq(schema.purchaseLines.purchaseId, purchase.id))
 
+    const pagos = await tx
+      .select({
+        method: schema.purchasePayments.method,
+        amount: schema.purchasePayments.amount,
+        currency: schema.purchasePayments.currency,
+        reference: schema.purchasePayments.reference,
+        occurredAt: schema.purchasePayments.occurredAt,
+        amountUsd: schema.purchasePayments.amountUsd,
+        amountVes: schema.purchasePayments.amountVes,
+      })
+      .from(schema.purchasePayments)
+      .where(eq(schema.purchasePayments.purchaseId, purchase.id))
+      .orderBy(schema.purchasePayments.occurredAt)
+
     const moneda = purchase.currency
     const propia = (usd: bigint, ves: bigint) => money(moneda, moneda === 'USD' ? usd : ves)
+
+    const totalOwed = moneda === 'USD' ? purchase.totalUsd : purchase.totalVes
+    const paidAmount = pagos.reduce((acc, p) => acc + (moneda === 'USD' ? p.amountUsd : p.amountVes), 0n)
 
     return {
       purchaseId: purchase.id,
@@ -437,7 +490,9 @@ export async function getPurchase(
       occurredAt: purchase.occurredAt,
       net: propia(purchase.netUsd, purchase.netVes),
       iva: propia(purchase.ivaUsd, purchase.ivaVes),
-      total: propia(purchase.totalUsd, purchase.totalVes),
+      total: money(moneda, totalOwed),
+      paid: money(moneda, paidAmount),
+      balance: money(moneda, totalOwed - paidAmount),
       notes: purchase.notes,
       lines: lineas.map((linea) => ({
         description: linea.description,
@@ -446,6 +501,154 @@ export async function getPurchase(
         unitCost: money(moneda, linea.unitCost),
         lineTotal: money(moneda, linea.lineTotal),
       })),
+      payments: pagos.map((p) => ({
+        method: p.method,
+        amount: money(p.currency, p.amount),
+        reference: p.reference,
+        occurredAt: p.occurredAt,
+      })),
     }
+  })
+}
+
+// --- Cuentas por pagar ------------------------------------------------------
+
+export interface PayableView {
+  readonly purchaseId: string
+  readonly supplierId: string
+  readonly supplierName: string
+  readonly invoiceNumber: string
+  readonly currency: Currency
+  readonly total: Money
+  readonly paid: Money
+  readonly balance: Money
+  readonly settled: boolean
+}
+
+/**
+ * Compras con saldo por pagar.
+ *
+ * El saldo se calcula sumando los abonos en la moneda de la deuda. Cada abono
+ * guardó su importe en las dos monedas con la tasa del día en que se pagó, así
+ * que una deuda en dólares abonada en bolívares se reduce por lo que ese pago
+ * valía ESE día, no con la tasa de hoy.
+ */
+export async function listPayables(
+  db: Database,
+  input: { tenantId: string; supplierId?: string | undefined; includeSettled?: boolean | undefined },
+): Promise<PayableView[]> {
+  const rows = await withTenant(db, input.tenantId, (tx) =>
+    tx.execute<{
+      id: string
+      supplier_id: string
+      supplier_name: string
+      invoice_number: string
+      currency: Currency
+      total: string
+      paid: string
+    }>(sql`
+      SELECT p.id, p.supplier_id, s.name AS supplier_name, p.invoice_number, p.currency,
+             (CASE WHEN p.currency = 'USD' THEN p.total_usd ELSE p.total_ves END)::text AS total,
+             COALESCE(SUM(
+               CASE WHEN p.currency = 'USD' THEN pp.amount_usd ELSE pp.amount_ves END
+             ), 0)::text AS paid
+      FROM purchases p
+      JOIN suppliers s ON s.id = p.supplier_id
+      LEFT JOIN purchase_payments pp ON pp.purchase_id = p.id
+      WHERE (${input.supplierId ?? null}::uuid IS NULL OR p.supplier_id = ${input.supplierId ?? null}::uuid)
+      GROUP BY p.id, s.name
+      HAVING (${input.includeSettled ?? false}
+              OR (CASE WHEN p.currency = 'USD' THEN p.total_usd ELSE p.total_ves END)
+                 - COALESCE(SUM(CASE WHEN p.currency = 'USD' THEN pp.amount_usd ELSE pp.amount_ves END), 0) > 0)
+      ORDER BY p.occurred_at
+    `),
+  )
+
+  return [...rows].map((row) => {
+    const total = BigInt(row.total)
+    const paid = BigInt(row.paid)
+    const balance = total - paid
+    return {
+      purchaseId: row.id,
+      supplierId: row.supplier_id,
+      supplierName: row.supplier_name,
+      invoiceNumber: row.invoice_number,
+      currency: row.currency,
+      total: money(row.currency, total),
+      paid: money(row.currency, paid),
+      balance: money(row.currency, balance),
+      settled: balance <= 0n,
+    }
+  })
+}
+
+/** Registra un pago a un proveedor contra una compra. */
+export async function registerPurchasePayment(
+  db: Database,
+  input: {
+    tenantId: string
+    userId: string
+    purchaseId: string
+    amount: Money
+    method?: string | undefined
+    reference?: string | undefined
+    now?: Date | undefined
+  },
+): Promise<{ balance: Money; settled: boolean }> {
+  const now = input.now ?? new Date()
+  const rate = await getRateFor(db, input.tenantId, toIsoDate(now))
+
+  return withTenant(db, input.tenantId, async (tx) => {
+    const [purchase] = await tx
+      .select()
+      .from(schema.purchases)
+      .where(eq(schema.purchases.id, input.purchaseId))
+      .limit(1)
+
+    if (!purchase) throw new PurchaseNotFoundError()
+
+    const paidRows = await tx.execute<{ paid: string }>(sql`
+      SELECT COALESCE(SUM(
+        CASE WHEN ${purchase.currency} = 'USD' THEN amount_usd ELSE amount_ves END
+      ), 0)::text AS paid
+      FROM purchase_payments WHERE purchase_id = ${input.purchaseId}
+    `)
+
+    const paidSoFar = BigInt([...paidRows][0]?.paid ?? '0')
+    const totalOwed = purchase.currency === 'USD' ? purchase.totalUsd : purchase.totalVes
+    const pending = totalOwed - paidSoFar
+
+    const inDebtCurrency = convert(input.amount, purchase.currency, rate)
+    if (inDebtCurrency.amount > pending) {
+      throw new PurchaseOverpaidError(`${pending} en unidades menores de ${purchase.currency}`)
+    }
+
+    await tx.insert(schema.purchasePayments).values({
+      tenantId: input.tenantId,
+      purchaseId: input.purchaseId,
+      currency: input.amount.currency,
+      amount: input.amount.amount,
+      amountUsd: convert(input.amount, 'USD', rate).amount,
+      amountVes: convert(input.amount, 'VES', rate).amount,
+      exchangeRateId: rate.id,
+      rateBsPerUsd: rate.bsPerUsd,
+      method: (input.method as never) ?? null,
+      reference: input.reference ?? null,
+      occurredAt: now,
+      createdByUserId: input.userId,
+    })
+
+    await tx.insert(schema.auditLog).values({
+      tenantId: input.tenantId,
+      actorUserId: input.userId,
+      action: 'CREATE',
+      entity: 'purchase_payments',
+      entityId: input.purchaseId,
+      after: { amount: input.amount.amount.toString(), currency: input.amount.currency },
+      occurredAt: now,
+    })
+
+    const balanceAmount = pending - inDebtCurrency.amount
+    return { balance: money(purchase.currency, balanceAmount), settled: balanceAmount === 0n }
   })
 }

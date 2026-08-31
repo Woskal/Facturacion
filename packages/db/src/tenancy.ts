@@ -19,6 +19,7 @@ export const TENANT_SCOPED_TABLES = [
   'suppliers',
   'purchases',
   'purchase_lines',
+  'purchase_payments',
   'document_series',
   'number_reservations',
   'documents',

@@ -283,6 +283,18 @@ export interface PurchaseSummaryJson {
   totalUsd: MoneyJson
 }
 
+export interface PayableJson {
+  purchaseId: string
+  supplierId: string
+  supplierName: string
+  invoiceNumber: string
+  currency: Currency
+  total: MoneyJson
+  paid: MoneyJson
+  balance: MoneyJson
+  settled: boolean
+}
+
 export interface FullPurchaseJson {
   purchaseId: string
   supplier: { name: string; id: string; phone: string | null }
@@ -293,8 +305,11 @@ export interface FullPurchaseJson {
   net: MoneyJson
   iva: MoneyJson
   total: MoneyJson
+  paid: MoneyJson
+  balance: MoneyJson
   notes: string | null
   lines: { description: string; sku: string | null; quantity: string; unitCost: MoneyJson; lineTotal: MoneyJson }[]
+  payments: { method: string | null; amount: MoneyJson; reference: string | null; occurredAt: string }[]
 }
 
 export interface CashLineJson {

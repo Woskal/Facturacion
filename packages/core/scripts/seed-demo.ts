@@ -57,7 +57,7 @@ try {
       audit_log, cash_counts, cash_sessions, receivable_entries, receivables,
       expenses, expense_categories, stock_movements, document_payments,
       document_tax_breakdown, document_lines, documents, number_reservations,
-      document_series, purchase_lines, purchases, suppliers, customers,
+      document_series, purchase_payments, purchase_lines, purchases, suppliers, customers,
       product_prices, products, price_lists, tax_rates, exchange_rates,
       station_credentials, sessions, stations, memberships, users, tenants
     RESTART IDENTITY CASCADE

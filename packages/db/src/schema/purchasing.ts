@@ -2,7 +2,7 @@ import { relations } from 'drizzle-orm'
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 import { amount, archivedAt, createdAt, primaryId, rateScaled, updatedAt } from './columns'
-import { currency, idKind } from './enums'
+import { currency, idKind, paymentMethod } from './enums'
 import { exchangeRates, products } from './catalog'
 import { tenants, users } from './tenancy'
 
@@ -111,6 +111,41 @@ export const purchaseLines = pgTable(
   (table) => [index('purchase_lines_purchase_idx').on(table.purchaseId)],
 )
 
+/**
+ * Pago a un proveedor contra una compra.
+ *
+ * El espejo de `receivable_entries`: cada abono guarda su importe en las dos
+ * monedas con la tasa del día en que se pagó, así que una deuda en dólares
+ * pagada en bolívares se reduce por lo que ese pago valía ESE día, no con la
+ * tasa de hoy. El saldo por pagar sale de restar estos abonos al total.
+ */
+export const purchasePayments = pgTable(
+  'purchase_payments',
+  {
+    id: primaryId(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    purchaseId: uuid('purchase_id')
+      .notNull()
+      .references(() => purchases.id, { onDelete: 'cascade' }),
+    currency: currency('currency').notNull(),
+    amount: amount('amount').notNull(),
+    amountUsd: amount('amount_usd').notNull(),
+    amountVes: amount('amount_ves').notNull(),
+    exchangeRateId: uuid('exchange_rate_id')
+      .notNull()
+      .references(() => exchangeRates.id),
+    rateBsPerUsd: rateScaled('rate_bs_per_usd').notNull(),
+    method: paymentMethod('method'),
+    reference: text('reference'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (table) => [index('purchase_payments_purchase_idx').on(table.purchaseId)],
+)
+
 export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
   tenant: one(tenants, { fields: [suppliers.tenantId], references: [tenants.id] }),
   purchases: many(purchases),
@@ -119,6 +154,11 @@ export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
 export const purchasesRelations = relations(purchases, ({ one, many }) => ({
   supplier: one(suppliers, { fields: [purchases.supplierId], references: [suppliers.id] }),
   lines: many(purchaseLines),
+  payments: many(purchasePayments),
+}))
+
+export const purchasePaymentsRelations = relations(purchasePayments, ({ one }) => ({
+  purchase: one(purchases, { fields: [purchasePayments.purchaseId], references: [purchases.id] }),
 }))
 
 export const purchaseLinesRelations = relations(purchaseLines, ({ one }) => ({

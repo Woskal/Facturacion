@@ -5,10 +5,13 @@ import { usd } from '@fve/money'
 import {
   DuplicateSupplierError,
   EmptyPurchaseError,
+  PurchaseOverpaidError,
   createPurchase,
   createSupplier,
   getPurchase,
+  listPayables,
   listPurchases,
+  registerPurchasePayment,
   searchSuppliers,
   setRate,
 } from '../src/index'
@@ -152,5 +155,88 @@ describe('compras', () => {
         now: AHORA,
       }),
     ).rejects.toThrow(EmptyPurchaseError)
+  })
+})
+
+describe('cuentas por pagar', () => {
+  async function compraACredito(invoiceNumber = 'A-900') {
+    const supplierId = await nuevoProveedor()
+    const { purchaseId } = await createPurchase(db, {
+      tenantId: negocio.tenantId,
+      userId: negocio.userId,
+      supplierId,
+      invoiceNumber,
+      currency: 'USD',
+      iva: usd(160n), // total = $10,00 + $1,60 = $11,60
+      lines: [{ productId: negocio.harina, description: 'Harina', quantity: 5000n, unitCost: usd(200n) }],
+      now: AHORA,
+    })
+    return purchaseId
+  }
+
+  it('una compra de contado no queda como cuenta por pagar', async () => {
+    const supplierId = await nuevoProveedor()
+    await createPurchase(db, {
+      tenantId: negocio.tenantId,
+      userId: negocio.userId,
+      supplierId,
+      invoiceNumber: 'A-800',
+      currency: 'USD',
+      iva: usd(160n),
+      paidNow: usd(1160n), // $11,60 completo
+      paidMethod: 'EFECTIVO_USD',
+      lines: [{ productId: negocio.harina, description: 'Harina', quantity: 5000n, unitCost: usd(200n) }],
+      now: AHORA,
+    })
+
+    const porPagar = await listPayables(db, { tenantId: negocio.tenantId })
+    expect(porPagar).toHaveLength(0)
+  })
+
+  it('una compra a crédito aparece con su saldo y se salda con pagos', async () => {
+    const purchaseId = await compraACredito()
+
+    let porPagar = await listPayables(db, { tenantId: negocio.tenantId })
+    expect(porPagar).toHaveLength(1)
+    expect(porPagar[0]?.balance.amount).toBe(1160n)
+
+    // Pago parcial de $10,00.
+    const parcial = await registerPurchasePayment(db, {
+      tenantId: negocio.tenantId,
+      userId: negocio.userId,
+      purchaseId,
+      amount: usd(1000n),
+    })
+    expect(parcial.balance.amount).toBe(160n)
+    expect(parcial.settled).toBe(false)
+
+    // Pago del resto: queda saldada y sale de la lista.
+    const final = await registerPurchasePayment(db, {
+      tenantId: negocio.tenantId,
+      userId: negocio.userId,
+      purchaseId,
+      amount: usd(160n),
+    })
+    expect(final.balance.amount).toBe(0n)
+    expect(final.settled).toBe(true)
+
+    porPagar = await listPayables(db, { tenantId: negocio.tenantId })
+    expect(porPagar).toHaveLength(0)
+
+    const compra = await getPurchase(db, { tenantId: negocio.tenantId, purchaseId })
+    expect(compra.balance.amount).toBe(0n)
+    expect(compra.payments).toHaveLength(2)
+  })
+
+  it('no admite pagar más que el saldo', async () => {
+    const purchaseId = await compraACredito('A-901')
+    await expect(
+      registerPurchasePayment(db, {
+        tenantId: negocio.tenantId,
+        userId: negocio.userId,
+        purchaseId,
+        amount: usd(2000n),
+      }),
+    ).rejects.toThrow(PurchaseOverpaidError)
   })
 })

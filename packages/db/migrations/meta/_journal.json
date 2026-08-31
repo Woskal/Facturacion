@@ -85,6 +85,13 @@
       "when": 1788163797580,
       "tag": "0011_proveedores_compras",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788199749515,
+      "tag": "0012_cuentas_por_pagar",
+      "breakpoints": true
     }
   ]
 }

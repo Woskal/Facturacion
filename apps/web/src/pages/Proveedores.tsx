@@ -7,6 +7,7 @@ import {
   fromMoney,
   toMoney,
   type FullPurchaseJson,
+  type PayableJson,
   type ProductJson,
   type PurchaseSummaryJson,
   type SupplierJson,
@@ -27,25 +28,35 @@ import {
 } from '../components/ui'
 
 export function Proveedores() {
-  const [vista, setVista] = useState<'directorio' | 'compras'>('directorio')
+  const [vista, setVista] = useState<'directorio' | 'compras' | 'porpagar'>('directorio')
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
-      <Encabezado titulo="Proveedores" subtitulo="Directorio de proveedores y facturas de compra">
+      <Encabezado titulo="Proveedores" subtitulo="Directorio, compras y cuentas por pagar">
         <Segmentado
           valor={vista}
           onCambio={setVista}
           opciones={[
             { valor: 'directorio', nombre: 'Directorio' },
             { valor: 'compras', nombre: 'Compras' },
+            { valor: 'porpagar', nombre: 'Por pagar' },
           ]}
         />
       </Encabezado>
 
-      {vista === 'directorio' ? <Directorio /> : <Compras />}
+      {vista === 'directorio' ? <Directorio /> : vista === 'compras' ? <Compras /> : <PorPagar />}
     </div>
   )
 }
+
+const METODOS_PAGO = [
+  { method: 'EFECTIVO_USD', nombre: 'Efectivo divisa' },
+  { method: 'EFECTIVO_BS', nombre: 'Efectivo Bs' },
+  { method: 'PAGO_MOVIL', nombre: 'Pago móvil' },
+  { method: 'TRANSFERENCIA_BS', nombre: 'Transferencia' },
+  { method: 'ZELLE', nombre: 'Zelle' },
+  { method: 'USDT', nombre: 'USDT' },
+] as const
 
 // --- Directorio de proveedores ----------------------------------------------
 
@@ -328,7 +339,7 @@ function Compras() {
           }}
         />
       ) : null}
-      {viendo ? <VerCompra compra={viendo} onCerrar={() => setViendo(null)} /> : null}
+      {viendo ? <VerCompra compra={viendo} onCerrar={() => setViendo(null)} onCambio={() => void cargar()} /> : null}
     </>
   )
 }
@@ -356,6 +367,8 @@ function RegistrarCompra({
   const [moneda, setMoneda] = useState<'USD' | 'VES'>('USD')
   const [lineas, setLineas] = useState<LineaCompra[]>([])
   const [ivaTexto, setIvaTexto] = useState('')
+  const [contado, setContado] = useState(true)
+  const [metodoContado, setMetodoContado] = useState<(typeof METODOS_PAGO)[number]['method']>('EFECTIVO_USD')
   const [notas, setNotas] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -445,6 +458,7 @@ function RegistrarCompra({
         ...(controlNumber.trim() ? { controlNumber: controlNumber.trim() } : {}),
         currency: moneda,
         iva: fromMoney(iva),
+        ...(contado ? { paidNow: fromMoney(total), paidMethod: metodoContado } : {}),
         ...(notas.trim() ? { notes: notas.trim() } : {}),
         lines: lineas.map((l) => ({
           ...(l.productId ? { productId: l.productId } : {}),
@@ -617,6 +631,37 @@ function RegistrarCompra({
           </div>
         </div>
 
+        {/* Forma de pago */}
+        <div className="space-y-2">
+          <Segmentado
+            valor={contado ? 'contado' : 'credito'}
+            onCambio={(v) => setContado(v === 'contado')}
+            opciones={[
+              { valor: 'contado', nombre: 'Pagada de contado' },
+              { valor: 'credito', nombre: 'A crédito' },
+            ]}
+            className="w-full"
+          />
+          {contado ? (
+            <div className="flex flex-wrap gap-1.5">
+              {METODOS_PAGO.map((m) => (
+                <button
+                  key={m.method}
+                  type="button"
+                  onClick={() => setMetodoContado(m.method)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    metodoContado === m.method ? 'border-acento bg-acento-tenue text-acento' : 'border-borde text-apagado hover:text-tinta'
+                  }`}
+                >
+                  {m.nombre}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-apagado">Queda como cuenta por pagar; regístrele pagos en «Por pagar».</p>
+          )}
+        </div>
+
         <Campo etiqueta="Notas" value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="opcional" />
 
         {error ? <Aviso>{error}</Aviso> : null}
@@ -634,7 +679,30 @@ function RegistrarCompra({
   )
 }
 
-function VerCompra({ compra, onCerrar }: { compra: FullPurchaseJson; onCerrar: () => void }) {
+function VerCompra({
+  compra: inicial,
+  onCerrar,
+  onCambio,
+}: {
+  compra: FullPurchaseJson
+  onCerrar: () => void
+  onCambio?: (() => void) | undefined
+}) {
+  const [compra, setCompra] = useState(inicial)
+  const [pagando, setPagando] = useState(false)
+
+  async function recargar() {
+    try {
+      const d = await api.get<{ purchase: FullPurchaseJson }>(`/purchases/${compra.purchaseId}`)
+      setCompra(d.purchase)
+      onCambio?.()
+    } catch {
+      /* si falla la recarga, el modal sigue mostrando lo anterior */
+    }
+  }
+
+  const saldo = toMoney(compra.balance)
+
   return (
     <Modal titulo={`Compra ${compra.invoiceNumber}`} descripcion={compra.supplier.name} onCerrar={onCerrar} ancho="lg">
       <div className="space-y-4">
@@ -686,13 +754,230 @@ function VerCompra({ compra, onCerrar }: { compra: FullPurchaseJson; onCerrar: (
             <span>Total</span>
             <span className="cifra">{formatMoney(toMoney(compra.total))}</span>
           </div>
+          <div className="flex justify-between text-apagado">
+            <span>Pagado</span>
+            <span className="cifra">{formatMoney(toMoney(compra.paid))}</span>
+          </div>
+          <div className={`flex justify-between font-medium ${saldo.amount > 0n ? 'text-alerta' : 'text-exito'}`}>
+            <span>{saldo.amount > 0n ? 'Saldo por pagar' : 'Saldada'}</span>
+            <span className="cifra">{formatMoney(saldo)}</span>
+          </div>
         </div>
+
+        {compra.payments.length > 0 ? (
+          <div className="text-xs text-apagado">
+            <span className="mb-1 block font-semibold uppercase tracking-wide">Pagos</span>
+            <ul className="space-y-1">
+              {compra.payments.map((p, i) => (
+                <li key={i} className="flex items-center justify-between rounded-md bg-tenue px-3 py-1.5">
+                  <span className="cifra">
+                    {new Date(p.occurredAt).toLocaleDateString('es-VE')}
+                    {p.reference ? ` · ${p.reference}` : ''}
+                  </span>
+                  <span className="cifra font-medium text-tinta">{formatMoney(toMoney(p.amount))}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {compra.notes ? <p className="rounded-lg bg-tenue px-3 py-2 text-sm text-apagado">{compra.notes}</p> : null}
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
           <Boton variante="plano" onClick={onCerrar}>
             Cerrar
+          </Boton>
+          {saldo.amount > 0n ? (
+            <Boton variante="principal" onClick={() => setPagando(true)}>
+              Registrar pago
+            </Boton>
+          ) : null}
+        </div>
+      </div>
+
+      {pagando ? (
+        <RegistrarPagoProveedor
+          purchaseId={compra.purchaseId}
+          titulo={compra.supplier.name}
+          subtitulo={`Factura ${compra.invoiceNumber}`}
+          saldo={compra.balance}
+          onCerrar={() => setPagando(false)}
+          onPagado={() => {
+            setPagando(false)
+            void recargar()
+          }}
+        />
+      ) : null}
+    </Modal>
+  )
+}
+
+// --- Cuentas por pagar ------------------------------------------------------
+
+function PorPagar() {
+  const [payables, setPayables] = useState<PayableJson[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [pagando, setPagando] = useState<PayableJson | null>(null)
+
+  const cargar = useCallback(async () => {
+    try {
+      const d = await api.get<{ payables: PayableJson[] }>('/payables')
+      setPayables(d.payables)
+      setError(null)
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar las cuentas por pagar.')
+    }
+  }, [])
+
+  useEffect(() => {
+    void cargar()
+  }, [cargar])
+
+  return (
+    <>
+      {error ? <Aviso>{error}</Aviso> : null}
+
+      <Tarjeta className="min-h-0 flex-1 overflow-auto">
+        {payables.length === 0 ? (
+          <Vacio>No hay nada pendiente de pago a proveedores.</Vacio>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10 border-b border-borde bg-lienzo text-xs uppercase tracking-wide text-apagado">
+              <tr>
+                <th className="px-4 py-2.5 text-left font-medium">Proveedor</th>
+                <th className="px-2 py-2.5 text-left font-medium">Factura</th>
+                <th className="w-28 px-2 py-2.5 text-right font-medium">Total</th>
+                <th className="w-28 px-2 py-2.5 text-right font-medium">Saldo</th>
+                <th className="w-24" />
+              </tr>
+            </thead>
+            <tbody>
+              {payables.map((p) => (
+                <tr key={p.purchaseId} className="border-b border-borde/60 transition last:border-0 hover:bg-tenue/50">
+                  <td className="px-4 py-2.5 font-medium text-tinta">{p.supplierName}</td>
+                  <td className="cifra px-2 py-2.5 text-apagado">{p.invoiceNumber}</td>
+                  <td className="cifra px-2 py-2.5 text-right text-apagado">{formatMoney(toMoney(p.total))}</td>
+                  <td className="cifra px-2 py-2.5 text-right font-medium text-alerta">
+                    {formatMoney(toMoney(p.balance))}
+                  </td>
+                  <td className="px-2 py-2.5 text-right">
+                    <Boton variante="suave" tamano="sm" onClick={() => setPagando(p)}>
+                      Pagar
+                    </Boton>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Tarjeta>
+
+      {pagando ? (
+        <RegistrarPagoProveedor
+          purchaseId={pagando.purchaseId}
+          titulo={pagando.supplierName}
+          subtitulo={`Factura ${pagando.invoiceNumber}`}
+          saldo={pagando.balance}
+          onCerrar={() => setPagando(null)}
+          onPagado={() => {
+            setPagando(null)
+            void cargar()
+          }}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function RegistrarPagoProveedor({
+  purchaseId,
+  titulo,
+  subtitulo,
+  saldo,
+  onCerrar,
+  onPagado,
+}: {
+  purchaseId: string
+  titulo: string
+  subtitulo: string
+  saldo: { currency: 'VES' | 'USD'; amount: string }
+  onCerrar: () => void
+  onPagado: () => void
+}) {
+  const [moneda, setMoneda] = useState<'USD' | 'VES'>(saldo.currency)
+  const [texto, setTexto] = useState('')
+  const [metodo, setMetodo] = useState<(typeof METODOS_PAGO)[number]['method']>('EFECTIVO_USD')
+  const [referencia, setReferencia] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
+
+  const monto = aMonto(texto, moneda)
+
+  async function guardar() {
+    if (!monto) {
+      setError('El monto no se entiende.')
+      return
+    }
+    setEnviando(true)
+    setError(null)
+    try {
+      await api.post(`/purchases/${purchaseId}/payments`, {
+        amount: fromMoney(monto),
+        method: metodo,
+        ...(referencia.trim() ? { reference: referencia.trim() } : {}),
+      })
+      onPagado()
+    } catch (fallo) {
+      setError(fallo instanceof ApiError ? fallo.message : 'No se pudo registrar el pago.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <Modal titulo="Pagar a proveedor" descripcion={`${titulo} · ${subtitulo}`} onCerrar={onCerrar}>
+      <div className="mb-4 flex items-baseline justify-between rounded-lg bg-tenue px-3 py-2">
+        <span className="text-sm text-apagado">Saldo por pagar</span>
+        <span className="cifra font-medium text-tinta">{formatMoney(toMoney(saldo))}</span>
+      </div>
+
+      <div className="space-y-3">
+        <div className="grid grid-cols-[90px_1fr] gap-3">
+          <Select etiqueta="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value as 'USD' | 'VES')}>
+            <option value="USD">$</option>
+            <option value="VES">Bs</option>
+          </Select>
+          <Campo etiqueta="Monto" value={texto} onChange={(e) => setTexto(e.target.value)} className="cifra text-right" autoFocus />
+        </div>
+
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-tinta">Medio de pago</span>
+          <div className="flex flex-wrap gap-1.5">
+            {METODOS_PAGO.map((m) => (
+              <button
+                key={m.method}
+                type="button"
+                onClick={() => setMetodo(m.method)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  metodo === m.method ? 'border-acento bg-acento-tenue text-acento' : 'border-borde text-apagado hover:text-tinta'
+                }`}
+              >
+                {m.nombre}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Campo etiqueta="Referencia" value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="opcional" />
+
+        {error ? <Aviso>{error}</Aviso> : null}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Boton variante="plano" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton variante="principal" disabled={enviando || !monto} onClick={() => void guardar()}>
+            {enviando ? 'Guardando…' : 'Registrar pago'}
           </Boton>
         </div>
       </div>

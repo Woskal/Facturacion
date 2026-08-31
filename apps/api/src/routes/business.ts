@@ -23,9 +23,11 @@ import {
   getPurchase,
   getRateFor,
   listControlBooks,
+  listPayables,
   listPurchases,
   listRates,
   profitReport,
+  registerPurchasePayment,
   listReceivables,
   listNumberBlocks,
   listStations,
@@ -756,6 +758,8 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         controlNumber: z.string().optional(),
         currency: currencySchema,
         iva: moneySchema,
+        paidNow: moneySchema.optional(),
+        paidMethod: paymentMethodSchema.optional(),
         notes: z.string().optional(),
         lines: z
           .array(
@@ -772,6 +776,32 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
 
     const created = await createPurchase(db, { tenantId: ctx.activeTenantId, userId: ctx.userId, ...body })
     return reply.status(201).send(created)
+  })
+
+  // --- Cuentas por pagar ----------------------------------------------------
+
+  app.get('/payables', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z
+      .object({ supplierId: z.string().uuid().optional(), includeSettled: z.coerce.boolean().optional() })
+      .parse(request.query)
+    return reply.send({ payables: await listPayables(db, { tenantId: ctx.activeTenantId, ...query }) })
+  })
+
+  app.post('/purchases/:purchaseId/payments', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = z.object({ purchaseId: z.string().uuid() }).parse(request.params)
+    const body = z
+      .object({ amount: moneySchema, method: paymentMethodSchema.optional(), reference: z.string().optional() })
+      .parse(request.body)
+
+    const result = await registerPurchasePayment(db, {
+      tenantId: ctx.activeTenantId,
+      userId: ctx.userId,
+      purchaseId: params.purchaseId,
+      ...body,
+    })
+    return reply.status(201).send(result)
   })
 
   // --- Caja -----------------------------------------------------------------
