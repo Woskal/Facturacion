@@ -41,6 +41,7 @@ import {
   lowStockProducts,
   openCashSession,
   productsByIds,
+  purchasesTotal,
   releaseNumberBlock,
   reserveNumberBlock,
   searchCustomers,
@@ -245,6 +246,13 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     const ctx = requireTenant(request)
     const rango = rangoSchema.parse(request.query)
     return reply.send({ total: await expensesTotal(db, { tenantId: ctx.activeTenantId, ...rango }) })
+  })
+
+  /** Total comprado a proveedores en el período. */
+  app.get('/reports/purchases-total', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ total: await purchasesTotal(db, { tenantId: ctx.activeTenantId, ...rango }) })
   })
 
   /** Retenciones que los clientes le aplicaron al negocio en el período. */

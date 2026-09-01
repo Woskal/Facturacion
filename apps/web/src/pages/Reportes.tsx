@@ -90,6 +90,7 @@ export function Reportes() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [ganancia, setGanancia] = useState<ProfitReportJson | null>(null)
   const [gastos, setGastos] = useState<MoneyJson | null>(null)
+  const [compras, setCompras] = useState<MoneyJson | null>(null)
   const [retenciones, setRetenciones] = useState<RetentionRowJson[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
@@ -99,7 +100,7 @@ export function Reportes() {
     const rango = `from=${desde}&to=${hasta}`
 
     try {
-      const [l, d, m, p, g, x, ret] = await Promise.all([
+      const [l, d, m, p, g, x, ret, c] = await Promise.all([
         api.get<{ book: Libro }>(`/reports/sales-book?${rango}`),
         api.get<{ days: Dia[] }>(`/reports/daily-sales?${rango}`),
         api.get<{ methods: Medio[] }>(`/reports/by-method?${rango}`),
@@ -107,6 +108,7 @@ export function Reportes() {
         api.get<{ report: ProfitReportJson }>(`/reports/profit?${rango}&limit=10`),
         api.get<{ total: MoneyJson }>(`/reports/expenses-total?${rango}`),
         api.get<{ retentions: RetentionRowJson[] }>(`/reports/retentions?${rango}`),
+        api.get<{ total: MoneyJson }>(`/reports/purchases-total?${rango}`),
       ])
       setLibro(l.book)
       setDias(d.days)
@@ -115,6 +117,7 @@ export function Reportes() {
       setGanancia(g.report)
       setGastos(x.total)
       setRetenciones(ret.retentions)
+      setCompras(c.total)
       setError(null)
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar los reportes.')
@@ -194,6 +197,7 @@ export function Reportes() {
           valor={libro ? formatMoney(toMoney(libro.totals.baseGeneral)) : '—'}
         />
         <Resumen titulo="IVA cobrado" valor={libro ? formatMoney(toMoney(libro.totals.ivaGeneral)) : '—'} />
+        <Resumen titulo="Compras" valor={compras ? formatMoney(toMoney(compras)) : '—'} />
         <Resumen titulo="Gastos" valor={gastos ? formatMoney(toMoney(gastos)) : '—'} />
         <Resumen
           titulo="Ganancia neta"

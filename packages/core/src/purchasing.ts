@@ -652,3 +652,18 @@ export async function registerPurchasePayment(
     return { balance: money(purchase.currency, balanceAmount), settled: balanceAmount === 0n }
   })
 }
+
+/** Total comprado a proveedores en el período, en bolívares a la tasa de cada compra. */
+export async function purchasesTotal(
+  db: Database,
+  input: { tenantId: string; from: string; to: string },
+): Promise<Money> {
+  const rows = await withTenant(db, input.tenantId, (tx) =>
+    tx.execute<{ total: string }>(sql`
+      SELECT COALESCE(SUM(total_ves), 0)::text AS total
+      FROM purchases
+      WHERE (occurred_at AT TIME ZONE 'America/Caracas')::date BETWEEN ${input.from}::date AND ${input.to}::date
+    `),
+  )
+  return money('VES', BigInt([...rows][0]?.total ?? '0'))
+}
