@@ -17,7 +17,7 @@ import {
   createSupplier,
   dailySales,
   expensesTotal,
-  fetchBcvRate,
+  fetchRate,
   customerHistory,
   getCashSessionSummary,
   getDocument,
@@ -169,7 +169,7 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
    */
   app.post('/rates/sync', async (request, reply) => {
     const ctx = requireTenant(request)
-    const quote = await fetchBcvRate()
+    const quote = await fetchRate()
     const result = await syncBcvRate(db, {
       tenantId: ctx.activeTenantId,
       quote,

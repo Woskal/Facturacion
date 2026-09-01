@@ -6,8 +6,11 @@ import { schema, withTenant, type Database } from '@fve/db'
 import {
   BcvUnavailableError,
   fetchBcvRate,
+  fetchDolarApiRate,
+  fetchRate,
   getRateFor,
   parseBcvHtml,
+  parseDolarApi,
   setRate,
   syncBcvRate,
   syncBcvRateForAllTenants,
@@ -42,6 +45,56 @@ beforeEach(async () => {
 function respuesta(body: string, status = 200): typeof fetch {
   return (async () => new Response(body, { status })) as unknown as typeof fetch
 }
+
+const DOLARAPI_JSON = JSON.stringify({
+  moneda: 'USD',
+  fuente: 'oficial',
+  nombre: 'Dólar',
+  compra: null,
+  venta: null,
+  promedio: 798.326,
+  fechaActualizacion: '2026-09-01T00:00:00-04:00',
+})
+
+describe('lectura de dolarapi', () => {
+  it('extrae la tasa y la fecha del JSON oficial', () => {
+    const q = parseDolarApi(JSON.parse(DOLARAPI_JSON))
+    expect(q.value).toBe('798,326')
+    expect(q.effectiveOn).toBe('2026-09-01')
+  })
+
+  it('rechaza un promedio ausente o no numérico', () => {
+    expect(() => parseDolarApi({ fechaActualizacion: '2026-09-01T00:00:00-04:00' })).toThrow(BcvUnavailableError)
+    expect(() => parseDolarApi({ promedio: 'x', fechaActualizacion: '2026-09-01' })).toThrow(BcvUnavailableError)
+  })
+
+  it('rechaza una respuesta sin fecha', () => {
+    expect(() => parseDolarApi({ promedio: 798.32 })).toThrow(BcvUnavailableError)
+  })
+
+  it('consulta dolarapi cuando responde bien', async () => {
+    const q = await fetchDolarApiRate({ fetchImpl: respuesta(DOLARAPI_JSON) })
+    expect(q.value).toBe('798,326')
+  })
+})
+
+describe('origen con respaldo', () => {
+  it('prefiere dolarapi cuando responde', async () => {
+    const q = await fetchRate({ fetchImpl: respuesta(DOLARAPI_JSON) })
+    expect(q.value).toBe('798,326')
+  })
+
+  it('cae al sitio del BCV si dolarapi no sirve', async () => {
+    // El mock devuelve HTML: dolarapi no lo entiende y se raspa el BCV.
+    const q = await fetchRate({ fetchImpl: respuesta(PAGINA) })
+    expect(q.value).toBe(VALOR)
+    expect(q.effectiveOn).toBe(FECHA_VALOR)
+  })
+
+  it('si ambos orígenes fallan, avisa', async () => {
+    await expect(fetchRate({ fetchImpl: respuesta('', 500) })).rejects.toThrow(BcvUnavailableError)
+  })
+})
 
 describe('lectura de la publicación del BCV', () => {
   it('extrae el valor y la fecha de la página real', () => {
@@ -176,21 +229,22 @@ describe('aplicación al negocio', () => {
 })
 
 describe('reparto a todos los negocios', () => {
-  it('consulta al BCV una sola vez y escribe en cada negocio activo', async () => {
+  it('consulta el origen una sola vez y escribe en cada negocio activo', async () => {
     const otro = await seedNegocio(db, '2')
 
     let consultas = 0
     const contando = (async () => {
       consultas += 1
-      return new Response(PAGINA, { status: 200 })
+      return new Response(DOLARAPI_JSON, { status: 200 })
     }) as unknown as typeof fetch
 
     const resultado = await syncBcvRateForAllTenants(db, { fetchImpl: contando })
 
-    // Cientos de escrituras baratas, no cientos de peticiones a un banco central.
+    // Cientos de escrituras baratas, no cientos de peticiones a la fuente.
     expect(consultas).toBe(1)
     expect(resultado.applied).toBe(2)
-    expect((await getRateFor(db, otro.tenantId, FECHA_VALOR)).bsPerUsd).toBe(79499170000n)
+    // 798,326 escalado a 1e8.
+    expect((await getRateFor(db, otro.tenantId, '2026-09-01')).bsPerUsd).toBe(79832600000n)
   })
 
   it('no toca los negocios suspendidos', async () => {

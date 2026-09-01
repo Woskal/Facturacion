@@ -98,6 +98,89 @@ export async function fetchBcvRate(options: FetchOptions = {}): Promise<BcvQuote
   return parseBcvHtml(await response.text())
 }
 
+export const DOLARAPI_URL = 'https://ve.dolarapi.com/v1/dolares/oficial'
+
+/**
+ * Interpreta la respuesta de dolarapi (dólar oficial de Venezuela).
+ *
+ * Es JSON estable —`promedio` es la tasa del BCV, `fechaActualizacion` trae ya
+ * la hora de Venezuela—, mucho más robusto que raspar la página del banco. Aun
+ * así el dato viene de fuera: se valida estrictamente y se construye la tasa
+ * para que un número absurdo reviente aquí y no en un documento.
+ */
+export function parseDolarApi(json: unknown): BcvQuote {
+  if (!json || typeof json !== 'object') {
+    throw new BcvUnavailableError('la respuesta no es un objeto')
+  }
+  const obj = json as Record<string, unknown>
+
+  const promedio = obj['promedio']
+  if (typeof promedio !== 'number' || !Number.isFinite(promedio) || promedio <= 0) {
+    throw new BcvUnavailableError('no trae un promedio válido')
+  }
+
+  const fecha = obj['fechaActualizacion']
+  if (typeof fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+    throw new BcvUnavailableError('no trae la fecha de actualización')
+  }
+  const effectiveOn = fecha.slice(0, 10)
+
+  // El número viene con punto decimal; la tasa se guarda con coma.
+  const value = String(promedio).replace('.', ',')
+
+  parseRate(value, effectiveOn, 'BCV')
+  return { value, effectiveOn }
+}
+
+/** Consulta la tasa oficial en dolarapi. */
+export async function fetchDolarApiRate(options: FetchOptions = {}): Promise<BcvQuote> {
+  const doFetch = options.fetchImpl ?? fetch
+  const url = options.url ?? DOLARAPI_URL
+
+  let response: Response
+  try {
+    response = await doFetch(url, {
+      signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
+      headers: { 'user-agent': 'fve-rate-sync/1.0', accept: 'application/json' },
+    })
+  } catch (error) {
+    throw new BcvUnavailableError(error instanceof Error ? error.message : 'fallo de red')
+  }
+
+  if (!response.ok) {
+    throw new BcvUnavailableError(`dolarapi respondió ${response.status}`)
+  }
+
+  let json: unknown
+  try {
+    json = await response.json()
+  } catch {
+    throw new BcvUnavailableError('dolarapi no devolvió JSON válido')
+  }
+
+  return parseDolarApi(json)
+}
+
+/**
+ * Obtiene la tasa oficial, prefiriendo dolarapi y cayendo al sitio del BCV.
+ *
+ * Un origen que se cae no deja al negocio sin tasa: si dolarapi falla, se raspa
+ * la página del BCV como respaldo. Si ambos fallan, se propaga el primer error.
+ */
+export async function fetchRate(options: FetchOptions = {}): Promise<BcvQuote> {
+  try {
+    return await fetchDolarApiRate(options)
+  } catch (dolarapiError) {
+    try {
+      return await fetchBcvRate(options)
+    } catch {
+      throw dolarapiError instanceof BcvUnavailableError
+        ? dolarapiError
+        : new BcvUnavailableError('no hay origen de tasa disponible')
+    }
+  }
+}
+
 export type SyncOutcome =
   | 'APPLIED'
   | 'UNCHANGED'
@@ -233,7 +316,7 @@ export async function syncBcvRateForAllTenants(
   db: Database,
   options: FetchOptions & { quote?: BcvQuote | undefined; maxJumpBps?: number | undefined } = {},
 ): Promise<SyncAllResult> {
-  const quote = options.quote ?? (await fetchBcvRate(options))
+  const quote = options.quote ?? (await fetchRate(options))
 
   const tenants = await db
     .select({ id: schema.tenants.id, archivedAt: schema.tenants.archivedAt })

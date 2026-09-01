@@ -199,8 +199,11 @@ npm run dev --workspace=@fve/web
 ## Tasa del BCV
 
 El precio se ancla en dólares y se cobra en bolívares a la tasa del BCV, que la
-API mantiene al día sola consultando `bcv.org.ve` cada hora (`BCV_SYNC_MINUTES`
-para cambiarlo, `BCV_SYNC=off` para apagarlo).
+API mantiene al día sola cada hora (`BCV_SYNC_MINUTES` para cambiarlo,
+`BCV_SYNC=off` para apagarlo). La tasa se obtiene de **dolarapi**
+(`ve.dolarapi.com`, JSON estable) y, si ese origen se cae, se raspa la página del
+propio BCV como respaldo — así una caída de un origen no deja al negocio sin
+tasa nueva.
 
 Tres reglas de esa sincronización:
 
