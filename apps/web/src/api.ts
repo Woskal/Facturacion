@@ -231,9 +231,10 @@ export interface FullDocumentJson {
     website: string | null
     footer: string | null
   }
-  customer: { name: string; id: string; address: string | null; phone: string | null } | null
+  customer: { customerId: string | null; name: string; id: string; address: string | null; phone: string | null } | null
   lines: {
     lineNumber: number
+    productId: string | null
     sku: string | null
     description: string
     unit: string
@@ -347,6 +348,12 @@ export interface ExpenseJson {
   amountVes: MoneyJson
   paidWith: string | null
   occurredAt: string
+}
+
+/** Carrito precargado, p. ej. al convertir un presupuesto en venta. */
+export interface BorradorVenta {
+  lines: { productId: string; quantity: string }[]
+  customer: { customerId: string; name: string; id: string } | null
 }
 
 export interface CashLineJson {

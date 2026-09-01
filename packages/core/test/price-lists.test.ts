@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Database } from '@fve/db'
 import { usd, ves } from '@fve/money'
 
-import { createSale, listPriceLists, searchProducts, setProductPrice, setRate } from '../src/index'
+import { createSale, listPriceLists, productsByIds, searchProducts, setProductPrice, setRate } from '../src/index'
 import { connect, resetDatabase, seedNegocio, type Negocio } from './helpers'
 
 const HOY = '2026-08-28'
@@ -70,5 +70,21 @@ describe('listas de precios', () => {
       now: AHORA,
     })
     expect(venta.totals.total.amount).toBe(200n)
+  })
+})
+
+describe('productos por id (para convertir un presupuesto)', () => {
+  it('devuelve los productos actuales en el orden pedido y omite los que no existen', async () => {
+    const productos = await productsByIds(db, {
+      tenantId: negocio.tenantId,
+      ids: [negocio.pan, '00000000-0000-0000-0000-000000000000', negocio.harina],
+    })
+    // El id inexistente se omite; el resto conserva el orden.
+    expect(productos.map((p) => p.productId)).toEqual([negocio.pan, negocio.harina])
+    expect(productos.find((p) => p.productId === negocio.harina)?.price.amount).toBe(150n)
+  })
+
+  it('con lista vacía no consulta nada', async () => {
+    expect(await productsByIds(db, { tenantId: negocio.tenantId, ids: [] })).toEqual([])
   })
 })

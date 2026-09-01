@@ -40,6 +40,7 @@ import {
   listTaxRates,
   lowStockProducts,
   openCashSession,
+  productsByIds,
   releaseNumberBlock,
   reserveNumberBlock,
   searchCustomers,
@@ -350,6 +351,14 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
   app.get('/products/low-stock', async (request, reply) => {
     const ctx = requireTenant(request)
     return reply.send({ products: await lowStockProducts(db, ctx.activeTenantId) })
+  })
+
+  /** Productos actuales por id (para reconstruir un carrito, p. ej. un presupuesto). */
+  app.get('/products/by-ids', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const query = z.object({ ids: z.string() }).parse(request.query)
+    const ids = query.ids.split(',').filter((id) => /^[0-9a-fA-F-]{36}$/.test(id))
+    return reply.send({ products: await productsByIds(db, { tenantId: ctx.activeTenantId, ids }) })
   })
 
   app.post('/products', async (request, reply) => {

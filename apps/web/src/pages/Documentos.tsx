@@ -40,7 +40,7 @@ const TONOS: Record<DocumentKind, 'acento' | 'neutro'> = {
   NOTA_CREDITO: 'neutro',
 }
 
-export function Documentos() {
+export function Documentos({ onConvertir }: { onConvertir?: ((documento: FullDocumentJson) => void) | undefined }) {
   const [docs, setDocs] = useState<DocumentSummaryJson[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [kind, setKind] = useState<DocumentKind | ''>('')
@@ -153,7 +153,14 @@ export function Documentos() {
       </Tarjeta>
 
       {abierto ? (
-        <VisorDocumento documento={abierto} onCerrar={() => setAbierto(null)} onAnulado={() => void cargar()} />
+        <VisorDocumento
+          documento={abierto}
+          onCerrar={() => setAbierto(null)}
+          onAnulado={() => void cargar()}
+          {...(onConvertir
+            ? { onConvertir: (d: FullDocumentJson) => { setAbierto(null); onConvertir(d) } }
+            : {})}
+        />
       ) : null}
       {config === 'emisor' ? <ConfigEmisor onCerrar={() => setConfig(null)} /> : null}
       {config === 'talonario' ? <ConfigTalonario onCerrar={() => setConfig(null)} /> : null}

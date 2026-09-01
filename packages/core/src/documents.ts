@@ -29,6 +29,7 @@ export interface DocumentIssuer {
 }
 
 export interface DocumentParty {
+  readonly customerId: string | null
   readonly name: string
   readonly id: string
   readonly address: string | null
@@ -37,6 +38,7 @@ export interface DocumentParty {
 
 export interface DocumentLine {
   readonly lineNumber: number
+  readonly productId: string | null
   readonly sku: string | null
   readonly description: string
   readonly unit: string
@@ -171,6 +173,7 @@ export async function getDocument(
       },
       customer: cliente
         ? {
+            customerId: cliente.id,
             name: cliente.name,
             id: `${cliente.idKind}-${cliente.idNumber}`,
             address: cliente.address,
@@ -179,6 +182,7 @@ export async function getDocument(
         : null,
       lines: lineas.map((linea) => ({
         lineNumber: linea.lineNumber,
+        productId: linea.productId,
         sku: linea.sku,
         description: linea.description,
         unit: linea.unit,

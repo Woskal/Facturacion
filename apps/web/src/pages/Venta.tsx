@@ -22,6 +22,7 @@ import {
   api,
   fromMoney,
   toMoney,
+  type BorradorVenta,
   type CustomerJson,
   type DocumentKind,
   type FullDocumentJson,
@@ -71,12 +72,16 @@ export function Venta({
   tenantId,
   enLinea,
   onVendido,
+  borrador,
+  onBorradorUsado,
 }: {
   rate: Rate
   stationId: string
   tenantId: string
   enLinea: boolean
   onVendido: () => void
+  borrador?: BorradorVenta | null | undefined
+  onBorradorUsado?: (() => void) | undefined
 }) {
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState<ProductJson[]>([])
@@ -107,6 +112,44 @@ export function Venta({
   useEffect(() => {
     if (!enLinea && kind !== 'NOTA_ENTREGA') setKind('NOTA_ENTREGA')
   }, [enLinea, kind])
+
+  // Convertir un presupuesto: precarga el carrito con sus productos a precio de
+  // hoy y su cliente, listo para cobrar como factura.
+  useEffect(() => {
+    if (!borrador) return
+    const ids = borrador.lines.map((l) => l.productId)
+    if (ids.length === 0) {
+      onBorradorUsado?.()
+      return
+    }
+    void api
+      .get<{ products: ProductJson[] }>(`/products/by-ids?ids=${ids.join(',')}`)
+      .then((d) => {
+        const porId = new Map(d.products.map((p) => [p.productId, p]))
+        const nuevas = borrador.lines
+          .map((l, i): LineaCarrito | null => {
+            const producto = porId.get(l.productId)
+            return producto ? { clave: `${producto.productId}-${i}`, producto, cantidad: BigInt(l.quantity) } : null
+          })
+          .filter((x): x is LineaCarrito => x !== null)
+        setCarrito(nuevas)
+        setEmitida(null)
+        setKind('FACTURA')
+        if (borrador.customer) {
+          setCliente({
+            customerId: borrador.customer.customerId,
+            id: borrador.customer.id,
+            name: borrador.customer.name,
+            phone: null,
+            specialTaxpayer: false,
+            openReceivables: 0,
+          })
+        }
+      })
+      .catch(() => setError('No se pudieron cargar los productos del presupuesto.'))
+      .finally(() => onBorradorUsado?.())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [borrador])
 
   // Búsqueda con retardo. Un lector de código de barras teclea muy rápido y
   // termina en Enter, así que también cae aquí sin tratamiento especial.

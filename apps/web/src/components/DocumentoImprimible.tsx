@@ -53,11 +53,14 @@ export function VisorDocumento({
   documento,
   onCerrar,
   onAnulado,
+  onConvertir,
 }: {
   documento: FullDocumentJson
   onCerrar: () => void
   /** Si va, se muestra el botón de anular; se llama tras anular con éxito. */
   onAnulado?: (() => void) | undefined
+  /** Si va, un presupuesto muestra el botón de convertir en venta. */
+  onConvertir?: ((documento: FullDocumentJson) => void) | undefined
 }) {
   const [formato, setFormato] = useState<'carta' | 'ticket'>(documento.kind === 'FACTURA' ? 'carta' : 'ticket')
   const [accion, setAccion] = useState<'anular' | 'credito' | null>(null)
@@ -104,6 +107,11 @@ export function VisorDocumento({
               { valor: 'ticket', nombre: 'Ticket' },
             ]}
           />
+          {onConvertir && documento.kind === 'PRESUPUESTO' && emitido ? (
+            <Boton variante="principal" onClick={() => onConvertir(documento)}>
+              Convertir en venta
+            </Boton>
+          ) : null}
           {onAnulado && acreditable ? (
             <Boton variante="normal" onClick={() => { setRazon(''); setError(null); setAccion('credito') }}>
               Nota de crédito

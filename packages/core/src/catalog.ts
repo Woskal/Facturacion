@@ -420,3 +420,77 @@ export async function setProductPrice(
       }),
   )
 }
+
+/**
+ * Productos actuales por id, en el orden pedido.
+ *
+ * Sirve para reconstruir un carrito —por ejemplo al convertir un presupuesto en
+ * venta— con el precio y la existencia de HOY, no los del momento en que se
+ * coticen. Los ids que ya no existan (producto archivado) simplemente no vuelven.
+ */
+export async function productsByIds(
+  db: Database,
+  input: { tenantId: string; ids: readonly string[] },
+): Promise<ProductView[]> {
+  if (input.ids.length === 0) return []
+
+  const enLista = sql.join(
+    input.ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  )
+
+  const rows = await withTenant(db, input.tenantId, (tx) =>
+    tx.execute<{
+      id: string
+      sku: string
+      barcode: string | null
+      name: string
+      unit: string
+      tax_code: string
+      price_mode: PriceMode
+      currency: Currency
+      unit_price: string | null
+      tracks_stock: boolean
+      stock: string
+      min_stock: string
+    }>(sql`
+      SELECT p.id, p.sku, p.barcode, p.name, p.unit,
+             t.code AS tax_code, p.price_mode,
+             pp.currency, pp.unit_price::text AS unit_price,
+             p.tracks_stock, p.min_stock::text AS min_stock,
+             COALESCE((SELECT SUM(m.quantity) FROM stock_movements m WHERE m.product_id = p.id), 0)::text AS stock
+      FROM products p
+      JOIN tax_rates t ON t.id = p.tax_rate_id
+      LEFT JOIN price_lists pl ON pl.tenant_id = p.tenant_id AND pl.is_default = true
+      LEFT JOIN product_prices pp ON pp.product_id = p.id AND pp.price_list_id = pl.id
+      WHERE p.archived_at IS NULL AND p.id IN (${enLista})
+    `),
+  )
+
+  const porId = new Map(
+    [...rows].map((row) => {
+      const stock = BigInt(row.stock)
+      const minStock = BigInt(row.min_stock)
+      return [
+        row.id,
+        {
+          productId: row.id,
+          sku: row.sku,
+          barcode: row.barcode,
+          name: row.name,
+          unit: row.unit,
+          taxCode: row.tax_code,
+          priceMode: row.price_mode,
+          price: money(row.currency ?? 'USD', BigInt(row.unit_price ?? '0')),
+          tracksStock: row.tracks_stock,
+          stock,
+          minStock,
+          belowMinimum: row.tracks_stock && minStock > 0n && stock <= minStock,
+        } as ProductView,
+      ]
+    }),
+  )
+
+  // Se respeta el orden pedido y se omiten los que ya no existen.
+  return input.ids.map((id) => porId.get(id)).filter((v): v is ProductView => v !== undefined)
+}

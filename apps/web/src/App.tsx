@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { formatRate, rate as makeRate, type Rate } from '@fve/money'
 
-import { ApiError, api, getToken, setToken, type LoginResponse, type Membership, type RateJson } from './api'
+import {
+  ApiError,
+  api,
+  getToken,
+  setToken,
+  type BorradorVenta,
+  type FullDocumentJson,
+  type LoginResponse,
+  type Membership,
+  type RateJson,
+} from './api'
 import { Aviso } from './components/ui'
 import { IconoMenu, IconoSalir, iconos } from './components/iconos'
 import { BarraConexion, useConexion } from './components/Conexion'
@@ -57,6 +67,24 @@ export function App() {
   const [stationId, setStationId] = useState<string | null>(null)
   const [avisoTasa, setAvisoTasa] = useState<string | null>(null)
   const [refrescoCola, setRefrescoCola] = useState(0)
+  const [borrador, setBorrador] = useState<BorradorVenta | null>(null)
+
+  // Convertir un presupuesto en venta: precarga el POS con sus productos y cliente.
+  const convertirPresupuesto = useCallback((documento: FullDocumentJson) => {
+    setBorrador({
+      lines: documento.lines
+        .filter((l) => l.productId)
+        .map((l) => ({ productId: l.productId as string, quantity: l.quantity })),
+      customer: documento.customer?.customerId
+        ? {
+            customerId: documento.customer.customerId,
+            name: documento.customer.name,
+            id: documento.customer.id,
+          }
+        : null,
+    })
+    setSeccion('venta')
+  }, [])
   const { enLinea } = useConexion()
 
   /** Recupera la sesión guardada al abrir. */
@@ -276,7 +304,7 @@ export function App() {
       {seccion === 'plataforma' ? <Operador /> : null}
       {seccion === 'cobranza' ? <Cobranza /> : null}
 
-      {seccion === 'documentos' ? <Documentos /> : null}
+      {seccion === 'documentos' ? <Documentos onConvertir={convertirPresupuesto} /> : null}
       {seccion === 'proveedores' ? <Proveedores /> : null}
       {seccion === 'gastos' ? <Gastos /> : null}
       {rate && seccion === 'catalogo' ? <Catalogo rate={rate} /> : null}
@@ -290,6 +318,8 @@ export function App() {
           tenantId={estado.tenantId}
           enLinea={enLinea}
           onVendido={() => setRefrescoCola((n) => n + 1)}
+          borrador={borrador}
+          onBorradorUsado={() => setBorrador(null)}
         />
       ) : null}
 
