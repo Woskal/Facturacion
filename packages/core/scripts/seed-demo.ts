@@ -27,6 +27,7 @@ import {
   createSupplier,
   createTenant,
   createUser,
+  fetchRate,
   setControlRange,
   setRate,
   toIsoDate,
@@ -101,7 +102,18 @@ try {
     documentFooter: 'Gracias por su compra. No se aceptan devoluciones sin este documento.',
   })
 
-  await setRate(db, { tenantId, value: '84,00', effectiveOn: hoy, userId: actorUserId })
+  // Tasa real del BCV (vía dolarapi) para hoy; si no hay internet, un valor por defecto.
+  let tasaValor = '84,00'
+  let tasaFecha = hoy
+  try {
+    const cotizacion = await fetchRate()
+    tasaValor = cotizacion.value
+    tasaFecha = cotizacion.effectiveOn
+    console.log(`  Tasa del BCV (dolarapi): Bs ${tasaValor} · ${tasaFecha}`)
+  } catch {
+    console.log('  Sin internet: se usa una tasa de ejemplo (Bs 84,00).')
+  }
+  await setRate(db, { tenantId, value: tasaValor, effectiveOn: tasaFecha, userId: actorUserId })
 
   const g = negocio.taxRateIds['G']!
   const e = negocio.taxRateIds['E']!
@@ -157,7 +169,7 @@ try {
       { productId: harina.productId, quantity: 10000n },
       { productId: aceite.productId, quantity: 3000n },
     ],
-    payments: [{ method: 'EFECTIVO_BS', amount: ves(200000n) }],
+    payments: [{ method: 'EFECTIVO_BS', amount: ves(2000000n) }],
   })
 
   // Un par de notas de entrega de contado, para dar volumen al reporte.
@@ -167,7 +179,7 @@ try {
     userId,
     currency: 'USD',
     lines: [{ productId: cafe.productId, quantity: 2000n }, { productId: pan.productId, quantity: 5000n }],
-    payments: [{ method: 'EFECTIVO_BS', amount: ves(200000n) }],
+    payments: [{ method: 'EFECTIVO_BS', amount: ves(2000000n) }],
   })
   await createSale(db, {
     tenantId,
@@ -175,7 +187,7 @@ try {
     userId,
     currency: 'USD',
     lines: [{ productId: harina.productId, quantity: 4000n }],
-    payments: [{ method: 'EFECTIVO_BS', amount: ves(100000n) }],
+    payments: [{ method: 'EFECTIVO_BS', amount: ves(2000000n) }],
   })
 
   console.log('Sembrado OK.')
