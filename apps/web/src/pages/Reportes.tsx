@@ -207,6 +207,8 @@ export function Reportes() {
         />
       </div>
 
+      <GraficaVentas dias={dias} />
+
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-2">
         <Tarjeta className="flex min-h-0 flex-col overflow-hidden">
           <CabeceraTarjeta>Cobrado por medio de pago</CabeceraTarjeta>
@@ -439,6 +441,53 @@ export function Reportes() {
         justificar el salto en la numeración.
       </p>
     </div>
+  )
+}
+
+/**
+ * Ventas por día, en barras.
+ *
+ * Una sola serie, así que un solo tono —el acento— y sin leyenda: el título ya
+ * dice qué se mide. Las barras crecen desde la base y cada una lleva su importe
+ * en el tooltip. Recesiva la línea de base, nada de rejilla ni ejes cargados.
+ */
+function GraficaVentas({ dias }: { dias: Dia[] }) {
+  if (dias.length === 0) return null
+
+  const maximo = dias.reduce((m, d) => {
+    const v = toMoney(d.totalVes).amount
+    return v > m ? v : m
+  }, 1n)
+
+  return (
+    <Tarjeta className="p-4">
+      <span className="block text-xs font-semibold uppercase tracking-wide text-apagado">Ventas por día</span>
+      <div className="mt-3 flex h-40 items-end gap-0.5 border-b border-borde">
+        {dias.map((d) => {
+          const v = toMoney(d.totalVes).amount
+          const pct = v > 0n ? Number((v * 1000n) / maximo) / 10 : 0
+          return (
+            <div
+              key={d.date}
+              className="group flex h-full flex-1 flex-col justify-end"
+              title={`${d.date} · ${formatMoney(toMoney(d.totalVes))} · ${d.documents} doc.`}
+            >
+              <div
+                className="rounded-t bg-acento transition group-hover:bg-acento-fuerte"
+                style={{ height: `${Math.max(pct, v > 0n ? 2 : 0)}%` }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-1 flex gap-0.5 text-[10px] text-apagado">
+        {dias.map((d) => (
+          <span key={d.date} className="flex-1 truncate text-center">
+            {d.date.slice(8)}
+          </span>
+        ))}
+      </div>
+    </Tarjeta>
   )
 }
 
