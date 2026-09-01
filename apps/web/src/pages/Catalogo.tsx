@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { convert, formatMoney, type Rate } from '@fve/money'
 
-import { ApiError, api, fromMoney, toMoney, type ProductJson, type TaxRateJson } from '../api'
+import { ApiError, api, fromMoney, toMoney, type PriceListJson, type ProductJson, type TaxRateJson } from '../api'
 import { aMilesimas, aMonto, cantidad } from '../formato'
 import {
   Aviso,
@@ -19,6 +19,7 @@ import {
 export function Catalogo({ rate }: { rate: Rate }) {
   const [productos, setProductos] = useState<ProductJson[]>([])
   const [alicuotas, setAlicuotas] = useState<TaxRateJson[]>([])
+  const [listas, setListas] = useState<PriceListJson[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [soloBajos, setSoloBajos] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +44,13 @@ export function Catalogo({ rate }: { rate: Rate }) {
     const temporizador = setTimeout(() => void cargar(), 150)
     return () => clearTimeout(temporizador)
   }, [cargar])
+
+  useEffect(() => {
+    void api
+      .get<{ priceLists: PriceListJson[] }>('/price-lists')
+      .then((data) => setListas(data.priceLists))
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     void api
@@ -165,6 +173,7 @@ export function Catalogo({ rate }: { rate: Rate }) {
         <EditarProducto
           producto={editando}
           alicuotas={alicuotas}
+          listas={listas}
           onCerrar={() => setEditando(null)}
           onGuardado={() => {
             setEditando(null)
@@ -179,17 +188,20 @@ export function Catalogo({ rate }: { rate: Rate }) {
 function EditarProducto({
   producto,
   alicuotas,
+  listas,
   onCerrar,
   onGuardado,
 }: {
   producto: ProductJson
   alicuotas: TaxRateJson[]
+  listas: PriceListJson[]
   onCerrar: () => void
   onGuardado: () => void
 }) {
   const [name, setName] = useState(producto.name)
   const [barcode, setBarcode] = useState(producto.barcode ?? '')
   const [precio, setPrecio] = useState(formatMoney(toMoney(producto.price), { symbol: false }))
+  const [precioMayor, setPrecioMayor] = useState('')
   const [taxRateId, setTaxRateId] = useState(
     (alicuotas.find((a) => a.code === producto.taxCode) ?? alicuotas[0])?.id ?? '',
   )
@@ -197,10 +209,17 @@ function EditarProducto({
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
+  const listaMayor = listas.find((l) => !l.isDefault)
+
   async function guardar() {
     const monto = aMonto(precio, 'USD')
     if (!monto) {
       setError('El precio no se entiende. Escriba por ejemplo 1,50.')
+      return
+    }
+    const montoMayor = precioMayor.trim() ? aMonto(precioMayor, 'USD') : null
+    if (precioMayor.trim() && !montoMayor) {
+      setError('El precio mayor no se entiende.')
       return
     }
     setEnviando(true)
@@ -213,6 +232,12 @@ function EditarProducto({
         ...(taxRateId ? { taxRateId } : {}),
         ...(aMilesimas(minimo) !== null ? { minStock: aMilesimas(minimo)!.toString() } : {}),
       })
+      if (montoMayor && listaMayor) {
+        await api.post(`/products/${producto.productId}/prices`, {
+          priceListId: listaMayor.id,
+          price: fromMoney(montoMayor),
+        })
+      }
       onGuardado()
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.message : 'No se pudo guardar el producto.')
@@ -228,7 +253,7 @@ function EditarProducto({
         <Campo etiqueta="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="opcional" />
         <div className="grid grid-cols-2 gap-3">
           <Campo
-            etiqueta="Precio en dólares"
+            etiqueta="Precio detal (USD)"
             value={precio}
             onChange={(e) => setPrecio(e.target.value)}
             className="cifra text-right"
@@ -241,6 +266,16 @@ function EditarProducto({
             ))}
           </Select>
         </div>
+        {listaMayor ? (
+          <Campo
+            etiqueta="Precio mayor (USD)"
+            value={precioMayor}
+            onChange={(e) => setPrecioMayor(e.target.value)}
+            className="cifra text-right"
+            placeholder="dejar vacío para no cambiarlo"
+            ayuda="El precio al mayor. Se usa cuando en la venta se elige esa lista."
+          />
+        ) : null}
         {producto.tracksStock ? (
           <Campo
             etiqueta="Mínimo para avisar"

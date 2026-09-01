@@ -28,6 +28,7 @@ import {
   listControlBooks,
   listExpenses,
   listPayables,
+  listPriceLists,
   listPurchases,
   listRates,
   listRetentions,
@@ -49,6 +50,7 @@ import {
   salesByMethod,
   searchProducts,
   setControlRange,
+  setProductPrice,
   setRate,
   syncBcvRate,
   toIsoDate,
@@ -313,7 +315,11 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
   app.get('/products', async (request, reply) => {
     const ctx = requireTenant(request)
     const query = z
-      .object({ q: z.string().optional(), limit: z.coerce.number().int().min(1).max(200).optional() })
+      .object({
+        q: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        priceListId: z.string().uuid().optional(),
+      })
       .parse(request.query)
 
     return reply.send({
@@ -321,8 +327,24 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         tenantId: ctx.activeTenantId,
         query: query.q,
         limit: query.limit,
+        priceListId: query.priceListId,
       }),
     })
+  })
+
+  app.get('/price-lists', async (request, reply) => {
+    const ctx = requireTenant(request)
+    return reply.send({ priceLists: await listPriceLists(db, ctx.activeTenantId) })
+  })
+
+  /** Fija el precio de un producto en una lista (p. ej. mayor). */
+  app.post('/products/:productId/prices', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const params = productParams.parse(request.params)
+    const body = z.object({ priceListId: z.string().uuid(), price: moneySchema }).parse(request.body)
+
+    await setProductPrice(db, { tenantId: ctx.activeTenantId, productId: params.productId, ...body })
+    return reply.status(204).send()
   })
 
   app.get('/products/low-stock', async (request, reply) => {
@@ -511,6 +533,7 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
         customerId: z.string().uuid().optional(),
         cashSessionId: z.string().uuid().optional(),
         kind: documentKindSchema.optional(),
+        priceListId: z.string().uuid().optional(),
         changeCurrency: currencySchema.optional(),
         clientRef: z.string().min(1).max(120).optional(),
         reservedNumber: z.number().int().min(1).optional(),

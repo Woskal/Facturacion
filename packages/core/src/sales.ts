@@ -62,6 +62,8 @@ export interface CreateSaleInput {
    */
   readonly cashSessionId?: string | undefined
   readonly kind?: DocumentKind | undefined
+  /** Lista de precios a aplicar (p. ej. mayor). Vacío = la predeterminada. */
+  readonly priceListId?: string | undefined
   readonly currency: Currency
   readonly lines: readonly SaleLineInput[]
   readonly payments: readonly PaymentInput[]
@@ -734,7 +736,7 @@ async function resolveLines(tx: Transaction, input: CreateSaleInput, rate: Rate)
 
       const unitPrice = line.unitPrice
         ? convert(line.unitPrice, input.currency, rate)
-        : convert(await priceOf(tx, found.products.id, input.currency, rate), input.currency, rate)
+        : convert(await priceOf(tx, found.products.id, input.currency, rate, input.priceListId), input.currency, rate)
 
       resolved.push({
         productId: found.products.id,
@@ -790,8 +792,29 @@ async function resolveLines(tx: Transaction, input: CreateSaleInput, rate: Rate)
   return resolved
 }
 
-/** Precio del producto en la lista predeterminada del negocio. */
-async function priceOf(tx: Transaction, productId: string, target: Currency, rate: Rate): Promise<Money> {
+/**
+ * Precio del producto en la lista indicada, con respaldo a la predeterminada.
+ *
+ * Si se pide una lista (p. ej. mayor) y el producto no tiene precio en ella, se
+ * usa el de la lista predeterminada: así vender al mayor nunca deja un producto
+ * sin precio por no haberlo cargado en las dos listas.
+ */
+async function priceOf(
+  tx: Transaction,
+  productId: string,
+  target: Currency,
+  rate: Rate,
+  priceListId?: string | undefined,
+): Promise<Money> {
+  if (priceListId) {
+    const sel = await tx
+      .select({ currency: schema.productPrices.currency, unitPrice: schema.productPrices.unitPrice })
+      .from(schema.productPrices)
+      .where(and(eq(schema.productPrices.productId, productId), eq(schema.productPrices.priceListId, priceListId)))
+      .limit(1)
+    if (sel[0]) return convert(money(sel[0].currency, sel[0].unitPrice), target, rate)
+  }
+
   const rows = await tx
     .select()
     .from(schema.productPrices)

@@ -111,6 +111,12 @@ export interface ProductJson {
   belowMinimum: boolean
 }
 
+export interface PriceListJson {
+  id: string
+  name: string
+  isDefault: boolean
+}
+
 export interface TaxRateJson {
   id: string
   code: string

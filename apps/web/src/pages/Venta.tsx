@@ -25,12 +25,13 @@ import {
   type CustomerJson,
   type DocumentKind,
   type FullDocumentJson,
+  type PriceListJson,
   type ProductJson,
   type SaleResponse,
 } from '../api'
 import { buscarLocal, encolarVenta, tomarNumero } from '../local'
 import { aMilesimas, aMonto, cantidad } from '../formato'
-import { Aviso, Boton, Campo, Insignia, Segmentado, Tarjeta, Vacio } from '../components/ui'
+import { Aviso, Boton, Campo, Insignia, Segmentado, Select, Tarjeta, Vacio } from '../components/ui'
 import { VisorDocumento } from '../components/DocumentoImprimible'
 
 interface LineaCarrito {
@@ -88,7 +89,18 @@ export function Venta({
   const [kind, setKind] = useState<DocumentKind>('NOTA_ENTREGA')
   const [cliente, setCliente] = useState<CustomerJson | null>(null)
   const [imprimible, setImprimible] = useState<FullDocumentJson | null>(null)
+  const [listas, setListas] = useState<PriceListJson[]>([])
+  const [listaId, setListaId] = useState('') // vacío = lista predeterminada (detal)
   const buscador = useRef<HTMLInputElement>(null)
+
+  // Listas de precios (detal/mayor). Solo se aplican en línea.
+  useEffect(() => {
+    if (!enLinea) return
+    void api
+      .get<{ priceLists: PriceListJson[] }>('/price-lists')
+      .then((d) => setListas(d.priceLists))
+      .catch(() => undefined)
+  }, [enLinea])
 
   // Sin conexión solo se emite nota de entrega: la factura necesita su número de
   // control, que se asigna en el servidor, y el presupuesto no se cobra en caja.
@@ -106,9 +118,10 @@ export function Venta({
     }
 
     const temporizador = setTimeout(() => {
+      const lista = listaId ? `&priceListId=${listaId}` : ''
       const buscar = enLinea
         ? api
-            .get<{ products: ProductJson[] }>(`/products?q=${encodeURIComponent(termino)}&limit=8`)
+            .get<{ products: ProductJson[] }>(`/products?q=${encodeURIComponent(termino)}&limit=8${lista}`)
             .then((data) => data.products)
             // Si la red falla en mitad de la búsqueda, se cae al catálogo
             // guardado en vez de dejar al cajero sin resultados.
@@ -124,7 +137,7 @@ export function Venta({
     }, 120)
 
     return () => clearTimeout(temporizador)
-  }, [busqueda, enLinea, tenantId])
+  }, [busqueda, enLinea, tenantId, listaId])
 
   function agregar(producto: ProductJson) {
     setEmitida(null)
@@ -237,6 +250,7 @@ export function Venta({
           currency: 'USD',
           kind,
           ...(cliente ? { customerId: cliente.customerId } : {}),
+          ...(listaId ? { priceListId: listaId } : {}),
           lines: lineas,
           payments: esPresupuesto ? [] : pagosCuerpo,
         })
@@ -435,6 +449,9 @@ export function Venta({
           cliente={cliente}
           onCliente={setCliente}
           enLinea={enLinea}
+          listas={listas}
+          listaId={listaId}
+          onListaId={setListaId}
         />
 
         <Tarjeta className="p-4">
@@ -554,12 +571,18 @@ function SelectorDocumento({
   cliente,
   onCliente,
   enLinea,
+  listas,
+  listaId,
+  onListaId,
 }: {
   kind: DocumentKind
   onKind: (valor: DocumentKind) => void
   cliente: CustomerJson | null
   onCliente: (cliente: CustomerJson | null) => void
   enLinea: boolean
+  listas: PriceListJson[]
+  listaId: string
+  onListaId: (id: string) => void
 }) {
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState<CustomerJson[]>([])
@@ -585,6 +608,20 @@ function SelectorDocumento({
         opciones={enLinea ? TIPOS_DOC : [{ valor: 'NOTA_ENTREGA', nombre: 'Nota de entrega' }]}
         className="w-full"
       />
+
+      {enLinea && listas.length > 1 ? (
+        <Select
+          etiqueta="Lista de precios"
+          value={listaId}
+          onChange={(e) => onListaId(e.target.value)}
+        >
+          {listas.map((l) => (
+            <option key={l.id} value={l.isDefault ? '' : l.id}>
+              {l.name}
+            </option>
+          ))}
+        </Select>
+      ) : null}
 
       <div className="relative">
         {cliente ? (

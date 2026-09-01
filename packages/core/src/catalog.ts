@@ -208,10 +208,18 @@ export interface ProductView {
  */
 export async function searchProducts(
   db: Database,
-  input: { tenantId: string; query?: string | undefined; limit?: number | undefined; onlyBelowMinimum?: boolean | undefined },
+  input: {
+    tenantId: string
+    query?: string | undefined
+    limit?: number | undefined
+    onlyBelowMinimum?: boolean | undefined
+    /** Lista de precios a mostrar. Si el producto no tiene precio en ella, cae a la predeterminada. */
+    priceListId?: string | undefined
+  },
 ): Promise<ProductView[]> {
   const pattern = `%${(input.query ?? '').trim()}%`
   const limit = input.limit ?? 50
+  const listId = input.priceListId ?? null
 
   const rows = await withTenant(db, input.tenantId, (tx) =>
     tx.execute<{
@@ -230,13 +238,16 @@ export async function searchProducts(
     }>(sql`
       SELECT p.id, p.sku, p.barcode, p.name, p.unit,
              t.code AS tax_code, p.price_mode,
-             pp.currency, pp.unit_price::text AS unit_price,
+             COALESCE(sel.currency, pp.currency) AS currency,
+             COALESCE(sel.unit_price, pp.unit_price)::text AS unit_price,
              p.tracks_stock, p.min_stock::text AS min_stock,
              COALESCE((SELECT SUM(m.quantity) FROM stock_movements m WHERE m.product_id = p.id), 0)::text AS stock
       FROM products p
       JOIN tax_rates t ON t.id = p.tax_rate_id
       LEFT JOIN price_lists pl ON pl.tenant_id = p.tenant_id AND pl.is_default = true
       LEFT JOIN product_prices pp ON pp.product_id = p.id AND pp.price_list_id = pl.id
+      LEFT JOIN product_prices sel ON sel.product_id = p.id
+             AND ${listId}::uuid IS NOT NULL AND sel.price_list_id = ${listId}::uuid
       WHERE p.archived_at IS NULL
         AND (${pattern} = '%%' OR p.name ILIKE ${pattern} OR p.sku ILIKE ${pattern} OR p.barcode ILIKE ${pattern})
       ORDER BY p.name
@@ -351,5 +362,61 @@ export async function listStations(db: Database, tenantId: string) {
       .from(schema.stations)
       .where(and(eq(schema.stations.tenantId, tenantId), isNull(schema.stations.archivedAt)))
       .orderBy(schema.stations.code),
+  )
+}
+
+// --- Listas de precios ------------------------------------------------------
+
+export interface PriceListView {
+  readonly id: string
+  readonly name: string
+  readonly isDefault: boolean
+}
+
+/**
+ * Listas de precios del negocio.
+ *
+ * Garantiza que exista una lista «Mayor» además de la predeterminada («Detal»):
+ * casi todo comercio vende a dos precios. Se crea la primera vez que se consulta,
+ * dentro del contexto del negocio, así que no hace falta migrar los negocios ya
+ * dados de alta.
+ */
+export async function listPriceLists(db: Database, tenantId: string): Promise<PriceListView[]> {
+  return withTenant(db, tenantId, async (tx) => {
+    const traer = () =>
+      tx
+        .select({ id: schema.priceLists.id, name: schema.priceLists.name, isDefault: schema.priceLists.isDefault })
+        .from(schema.priceLists)
+        .where(and(eq(schema.priceLists.tenantId, tenantId), isNull(schema.priceLists.archivedAt)))
+
+    let lists = await traer()
+    if (!lists.some((l) => l.name === 'Mayor')) {
+      await tx.insert(schema.priceLists).values({ tenantId, name: 'Mayor', isDefault: false })
+      lists = await traer()
+    }
+
+    return [...lists].sort((a, b) => (a.isDefault === b.isDefault ? a.name.localeCompare(b.name) : a.isDefault ? -1 : 1))
+  })
+}
+
+/** Fija el precio de un producto en una lista. Reemplaza el que hubiera. */
+export async function setProductPrice(
+  db: Database,
+  input: { tenantId: string; productId: string; priceListId: string; price: Money },
+): Promise<void> {
+  await withTenant(db, input.tenantId, (tx) =>
+    tx
+      .insert(schema.productPrices)
+      .values({
+        tenantId: input.tenantId,
+        productId: input.productId,
+        priceListId: input.priceListId,
+        currency: input.price.currency,
+        unitPrice: input.price.amount,
+      })
+      .onConflictDoUpdate({
+        target: [schema.productPrices.productId, schema.productPrices.priceListId],
+        set: { currency: input.price.currency, unitPrice: input.price.amount, updatedAt: new Date() },
+      }),
   )
 }
