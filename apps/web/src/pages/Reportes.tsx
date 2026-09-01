@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { formatMoney, money, type Money } from '@fve/money'
 
-import { ApiError, api, getToken, toMoney, type MoneyJson, type ProfitReportJson } from '../api'
+import {
+  ApiError,
+  api,
+  getToken,
+  toMoney,
+  type MoneyJson,
+  type ProfitReportJson,
+  type RetentionRowJson,
+} from '../api'
 import { cantidad } from '../formato'
 import { Aviso, Boton, CabeceraTarjeta, Campo, Encabezado, Insignia, Tarjeta, Vacio } from '../components/ui'
 
@@ -82,6 +90,7 @@ export function Reportes() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [ganancia, setGanancia] = useState<ProfitReportJson | null>(null)
   const [gastos, setGastos] = useState<MoneyJson | null>(null)
+  const [retenciones, setRetenciones] = useState<RetentionRowJson[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
 
@@ -90,13 +99,14 @@ export function Reportes() {
     const rango = `from=${desde}&to=${hasta}`
 
     try {
-      const [l, d, m, p, g, x] = await Promise.all([
+      const [l, d, m, p, g, x, ret] = await Promise.all([
         api.get<{ book: Libro }>(`/reports/sales-book?${rango}`),
         api.get<{ days: Dia[] }>(`/reports/daily-sales?${rango}`),
         api.get<{ methods: Medio[] }>(`/reports/by-method?${rango}`),
         api.get<{ products: Producto[] }>(`/reports/top-products?${rango}&limit=10`),
         api.get<{ report: ProfitReportJson }>(`/reports/profit?${rango}&limit=10`),
         api.get<{ total: MoneyJson }>(`/reports/expenses-total?${rango}`),
+        api.get<{ retentions: RetentionRowJson[] }>(`/reports/retentions?${rango}`),
       ])
       setLibro(l.book)
       setDias(d.days)
@@ -104,6 +114,7 @@ export function Reportes() {
       setProductos(p.products)
       setGanancia(g.report)
       setGastos(x.total)
+      setRetenciones(ret.retentions)
       setError(null)
     } catch (fallo) {
       setError(fallo instanceof ApiError ? fallo.message : 'No se pudieron cargar los reportes.')
@@ -304,6 +315,50 @@ export function Reportes() {
           costo» marca productos vendidos sin ninguna compra cargada.
         </p>
       </Tarjeta>
+
+      {retenciones.length > 0 ? (
+        <Tarjeta className="overflow-hidden">
+          <CabeceraTarjeta>Retenciones que le aplicaron</CabeceraTarjeta>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-borde text-xs uppercase tracking-wide text-apagado">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Fecha</th>
+                  <th className="px-2 py-2 text-left font-medium">Cliente</th>
+                  <th className="px-2 py-2 text-left font-medium">Documento</th>
+                  <th className="w-16 px-2 py-2 text-center font-medium">Tipo</th>
+                  <th className="px-2 py-2 text-left font-medium">Comprobante</th>
+                  <th className="w-28 px-4 py-2 text-right font-medium">Retenido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retenciones.map((r, i) => (
+                  <tr key={i} className="border-b border-borde/60 last:border-0">
+                    <td className="cifra px-4 py-2 text-apagado">{new Date(r.occurredAt).toLocaleDateString('es-VE')}</td>
+                    <td className="max-w-48 truncate px-2 py-2 text-tinta">{r.customerName}</td>
+                    <td className="cifra px-2 py-2 text-apagado">{r.fullNumber}</td>
+                    <td className="px-2 py-2 text-center">
+                      <Insignia tono="acento">{r.kind === 'RETENTION_IVA' ? 'IVA' : 'ISLR'}</Insignia>
+                    </td>
+                    <td className="cifra px-2 py-2 text-apagado">{r.retentionNumber ?? '—'}</td>
+                    <td className="cifra px-4 py-2 text-right font-medium text-tinta">{formatMoney(toMoney(r.amount))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t border-borde text-sm font-medium">
+                <tr>
+                  <td className="px-4 py-2" colSpan={5}>
+                    Total retenido
+                  </td>
+                  <td className="cifra px-4 py-2 text-right">
+                    {formatMoney(money('VES', retenciones.reduce((acc, r) => acc + toMoney(r.amount).amount, 0n)))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Tarjeta>
+      ) : null}
 
       <Tarjeta className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <CabeceraTarjeta>Libro de ventas</CabeceraTarjeta>

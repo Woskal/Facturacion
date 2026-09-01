@@ -418,10 +418,15 @@ function Abonar({
 
   const saldo = toMoney(fila.balance)
   const monto = aMonto(texto, moneda)
+  const esRetencion = tipo === 'RETENTION_IVA' || tipo === 'RETENTION_ISLR'
 
   async function guardar() {
     if (!monto) {
       setError('El monto no se entiende.')
+      return
+    }
+    if (esRetencion && referencia.trim() === '') {
+      setError('Una retención necesita el número de su comprobante.')
       return
     }
 
@@ -495,7 +500,8 @@ function Abonar({
           etiqueta={tipo === 'PAYMENT' ? 'Referencia' : 'Número del comprobante'}
           value={referencia}
           onChange={(e) => setReferencia(e.target.value)}
-          placeholder="opcional"
+          placeholder={esRetencion ? 'obligatorio' : 'opcional'}
+          ayuda={esRetencion ? 'El correlativo del comprobante de retención que entregó el cliente.' : undefined}
         />
 
         {error ? <Aviso>{error}</Aviso> : null}
@@ -504,7 +510,11 @@ function Abonar({
           <Boton variante="plano" onClick={onCerrar}>
             Cancelar
           </Boton>
-          <Boton variante="principal" disabled={enviando || !monto} onClick={() => void guardar()}>
+          <Boton
+            variante="principal"
+            disabled={enviando || !monto || (esRetencion && referencia.trim() === '')}
+            onClick={() => void guardar()}
+          >
             {enviando ? 'Guardando…' : 'Abonar'}
           </Boton>
         </div>

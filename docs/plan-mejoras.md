@@ -76,10 +76,16 @@ descuadrarse.
 
 **Por qué:** el dominio lo marca como no-opcional para quien le vende a un
 especial —"le van a retener y tiene que registrarlo o su cuenta por cobrar nunca
-cuadra"—. **Cimiento:** la cartera ya acepta abonos por `RETENTION_IVA` y
-`RETENTION_ISLR` desde el día uno; falta el comprobante y el lado del proveedor.
-**Tamaño:** mediano. **Hecho cuando:** un cobro con retención genera su
-comprobante y la cuenta por cobrar queda saldada por el par pago + retención.
+cuadra"—.
+
+**Decisión al ejecutar (2026-08-31):** el negocio objetivo (una sola caja)
+normalmente NO es contribuyente especial, así que **no retiene** a proveedores;
+lo que sí ocurre es que sus clientes especiales le retienen a él. Por eso se hizo
+solo esa parte: registrar la retención que aplica el cliente (con su comprobante
+obligatorio, que salda la cuenta por cobrar) y un reporte de **retenciones
+recibidas** del período para su propia declaración. **La generación de
+comprobantes de retención a proveedores queda fuera**, como multiusuario, salvo
+que se decida apuntar a contribuyentes especiales. **Hecho.**
 
 ---
 

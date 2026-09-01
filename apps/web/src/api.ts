@@ -254,6 +254,15 @@ export interface FullDocumentJson {
   issuedBy: string
 }
 
+export interface RetentionRowJson {
+  occurredAt: string
+  kind: 'RETENTION_IVA' | 'RETENTION_ISLR'
+  retentionNumber: string | null
+  customerName: string
+  fullNumber: string
+  amount: MoneyJson
+}
+
 export interface ProfitRowJson {
   productId: string | null
   sku: string | null

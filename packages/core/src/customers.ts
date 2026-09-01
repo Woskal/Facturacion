@@ -3,7 +3,7 @@ import { schema, withTenant, type Database } from '@fve/db'
 import { convert, money, subtract, type Currency, type Money } from '@fve/money'
 
 import { CoreError } from './errors'
-import { getRateFor, toIsoDate } from './rates'
+import { getRateFor, toIsoDate, type IsoDate } from './rates'
 
 export type IdKind = 'V' | 'E' | 'J' | 'G' | 'P'
 
@@ -375,4 +375,56 @@ export async function customerHistory(
       .orderBy(schema.documents.issuedAt)
       .limit(input.limit ?? 50),
   )
+}
+
+export interface RetentionRow {
+  readonly occurredAt: Date
+  readonly kind: 'RETENTION_IVA' | 'RETENTION_ISLR'
+  readonly retentionNumber: string | null
+  readonly customerName: string
+  readonly fullNumber: string
+  /** Importe retenido, en bolívares a la tasa del día en que se registró. */
+  readonly amount: Money
+}
+
+/**
+ * Retenciones que los clientes le aplicaron al negocio en el período.
+ *
+ * Es lo que un contribuyente especial le retiene al pagar; el negocio lo
+ * necesita para su propia declaración. Todo en bolívares, con la tasa de cada
+ * asiento.
+ */
+export async function listRetentions(
+  db: Database,
+  input: { tenantId: string; from: IsoDate; to: IsoDate },
+): Promise<RetentionRow[]> {
+  const rows = await withTenant(db, input.tenantId, (tx) =>
+    tx.execute<{
+      occurred_at: string
+      kind: 'RETENTION_IVA' | 'RETENTION_ISLR'
+      retention_number: string | null
+      customer_name: string
+      full_number: string
+      amount_ves: string
+    }>(sql`
+      SELECT e.occurred_at, e.kind::text AS kind, e.retention_number,
+             c.name AS customer_name, d.full_number, e.amount_ves::text AS amount_ves
+      FROM receivable_entries e
+      JOIN receivables r ON r.id = e.receivable_id
+      JOIN documents d ON d.id = r.document_id
+      JOIN customers c ON c.id = r.customer_id
+      WHERE e.kind IN ('RETENTION_IVA', 'RETENTION_ISLR')
+        AND (e.occurred_at AT TIME ZONE 'America/Caracas')::date BETWEEN ${input.from}::date AND ${input.to}::date
+      ORDER BY e.occurred_at DESC
+    `),
+  )
+
+  return [...rows].map((row) => ({
+    occurredAt: new Date(row.occurred_at),
+    kind: row.kind,
+    retentionNumber: row.retention_number,
+    customerName: row.customer_name,
+    fullNumber: row.full_number,
+    amount: money('VES', BigInt(row.amount_ves)),
+  }))
 }

@@ -30,6 +30,7 @@ import {
   listPayables,
   listPurchases,
   listRates,
+  listRetentions,
   profitReport,
   registerPurchasePayment,
   listReceivables,
@@ -241,6 +242,13 @@ export function registerBusinessRoutes(app: FastifyInstance, db: Database): void
     const ctx = requireTenant(request)
     const rango = rangoSchema.parse(request.query)
     return reply.send({ total: await expensesTotal(db, { tenantId: ctx.activeTenantId, ...rango }) })
+  })
+
+  /** Retenciones que los clientes le aplicaron al negocio en el período. */
+  app.get('/reports/retentions', async (request, reply) => {
+    const ctx = requireTenant(request)
+    const rango = rangoSchema.parse(request.query)
+    return reply.send({ retentions: await listRetentions(db, { tenantId: ctx.activeTenantId, ...rango }) })
   })
 
   // --- Catálogo -------------------------------------------------------------
