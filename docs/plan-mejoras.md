@@ -134,6 +134,11 @@ hay al menos una vista con gráfica y un reporte de compras/gastos.
 
 ## Fase 8 — Validez fiscal (impresora fiscal)
 
+**Diferida (2026-09-01):** requiere hardware fiscal real para probar de verdad y
+no conviene construirla a ciegas. Se retoma cuando haya una impresora concreta;
+entonces el trabajo se ancla a su marca/modelo y su SDK. Hasta ese momento el
+sistema sigue siendo administrativo, que es el alcance acordado.
+
 **Objetivo:** emitir el documento fiscal ante el SENIAT, no solo el
 administrativo.
 
